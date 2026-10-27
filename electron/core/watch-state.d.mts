@@ -1,0 +1,1 @@
+export function isWatched(item: {watchState?: {watched: boolean}; watchHistory?: {watched: boolean; checkedAt: string}; progress?: {percent: number; updatedAt: string}; remoteProgress?: {progress: number; paused_at: string}}): boolean;

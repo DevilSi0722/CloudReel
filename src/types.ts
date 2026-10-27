@@ -1,0 +1,41 @@
+export type Progress = { position: number; duration: number; percent: number; updatedAt: string };
+export type Catalog = { source: 'tmdb' | 'douban' | 'tvmaze'; id: string; kind: 'movie' | 'episode'; title: string; originalTitle?: string; year?: number; overview?: string; poster?: string; backdrop?: string; logo?: string; logoLanguage?: string | null; rating?: number; genres?: string[]; runtime?: number; cast?: {name: string; character?: string}[]; director?: string; tagline?: string; imdb?: string };
+export type Collection = { id: string; kind: 'movie' | 'episode'; title: string; year?: number; catalog?: Catalog; itemIds: string[]; seasons: number[]; totalEpisodes: number; addedAt: string };
+export type CatalogResult = Catalog & { query?: string };
+export type VideoStatus = {source: 'SDR' | 'HDR10' | 'HLG' | 'Dolby Vision' | null; output: 'SDR' | 'HDR' | null; mapped: boolean; nativeDolbyVision: boolean; dolbyVisionProfile?: number; peakNits?: number; outputTransfer?: string; outputPrimaries?: string; pixelFormat?: string; decoder?: string; renderer?: string};
+export type PlayerStatus = { switching?: {itemId: string; title: string} | null; loadError?: string | null; subtitleStyle?: {delay: number; size: number; font: string}; subtitlesLoading?: boolean; upNext?: {itemId: string; remaining: number; paused: boolean} | null; seek?: {id: string; target: number; pending: boolean; error?: string}; video?: VideoStatus; boosting?: boolean; hint?: {text: string; until: number}; itemId: string; title: string; paused: boolean; position: number; duration: number; speed: number; volume: number; muted: boolean; buffering: boolean; ready: boolean; embedded: boolean; fullscreen: boolean; aid: number | string; sid: number | string; tracks: {id: number; type: 'audio' | 'sub'; title?: string; lang?: string; codec?: string; selected?: boolean}[] };
+export type MediaItem = {
+  id: string; source: 'baidu' | 'local'; fsId?: string; filename: string; path: string; size: number; fileModifiedAt?: number;
+  title: string; year?: number; kind: 'movie' | 'episode'; season?: number; episode?: number; addedAt: string;
+  progress?: Progress; remoteProgress?: { progress: number; paused_at: string; source?: 'playback' | 'history' }; syncedAt?: string;
+  remoteWatching?: {startedAt: string; expiresAt: string}; remoteNext?: {watchedAt: string};
+  metadata?: { type: string; ids: { trakt: number; tmdb?: number; imdb?: string }; year?: number; overview?: string; episodeTitle?: string };
+  catalog?: Catalog; seriesTitle?: string; inferredTitle?: string; identificationLocked?: boolean;
+  episodeMetadata?: { title?: string; overview?: string; still?: string; runtime?: number; airDate?: string };
+  externalSubtitles?: string[]; favorite?: boolean; continueHiddenAt?: string; versionPreferred?: boolean; unavailable?: boolean; technical?: {width?: number; height?: number; codec?: string; dynamicRange?: string; audio?: string; channels?: string; fps?: number; duration?: number; bitDepth?: number; dolbyVisionProfile?: number; verified?: boolean; probedAt?: string; fileSize?: number; fileModifiedAt?: number; audioTracks?: MediaTrackInfo[]; subtitles?: MediaTrackInfo[]};
+  watchState?: {watched: boolean; updatedAt: string; pending: boolean; jobId?: string; syncedAt?: string; error?: string};
+  watchHistory?: {watched: boolean; checkedAt: string; lastWatchedAt?: string};
+};
+export type LibraryPreferences = {status?: string; sort?: string; source?: string; genre?: string; year?: string};
+export type Settings = { baiduMode: 'web' | 'oauth'; baiduClientId: string; traktClientId: string; traktRedirectUri: string; mpvPath: string; rootDir: string; autoSync: boolean; autoScrape: boolean; autoNext: boolean; autoRefresh?: boolean };
+export type MediaTrackInfo = {codec: string; lang: string; title: string; channels: string; sampleRate?: number; selected: boolean};
+export type PlaybackDefaults = {audioLanguage: string; subtitleLanguage: string; speed: number; subtitleDelay: number; subtitleSize: number; subtitleFont: string; rememberPlayback: boolean};
+export type ScanRoot = {id: string; source: 'local' | 'baidu'; path: string; enabled: boolean; lastScannedAt?: string; count?: number; error?: string | null};
+export type AppState = {
+  mediaProbes?: Record<string,{running: boolean; error?: string | null}>; playbackDefaults?: PlaybackDefaults; scanRoots?: ScanRoot[];
+  libraryPreferences?: LibraryPreferences;
+  settings: Settings; items: MediaItem[]; collections: Collection[]; pendingCount: number; hasBaiduSecret: boolean; hasTmdbToken: boolean;
+  scrape: {running: boolean; done: number; total: number; matched: number; failed: number; current: string; error: string | null; tmdbConfigured: boolean; connectionError?: string | null};
+  accounts: { baidu: Account; trakt: Account };
+  logs: { id: string; at: string; level: string; message: string }[];
+  player: null | PlayerStatus;
+  scan: { running: boolean; count: number; directory: string; error: string | null };
+  runtime: { mpvReady: boolean; version: string; desktop: boolean; fullscreen?: boolean; playerOverlay?: boolean; windowChrome?: boolean };
+};
+export type Account = { connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
+  sync?: {pulling: boolean; lastPulledAt?: string; positions?: number; watched?: number; remotePositions?: number; error?: string | null; warning?: string | null; watching?: {itemId: string; title: string; season?: number; episode?: number; expiresAt: string} | null}; };
+export type CloudFile = { fs_id: number | string; server_filename: string; path: string; size: number; isdir: number };
+export type MatchResult = { type: 'movie' | 'show'; title: string; year?: number; overview?: string; ids: { trakt: number } };
+export type BaiduAuth = { mode?: 'web'; userCode: string; verificationUrl: string; qrcodeUrl?: string; expiresAt: number };
+export type Bridge = { filePath?(file: File): string; invoke<T = unknown>(method: string, payload?: unknown): Promise<T>; onState(callback: (state: AppState) => void): () => void; onPlayerAction?(callback: (action: string) => void): () => void; onPlayerPointer?(callback: (inside: boolean) => void): () => void; onPlayerActivity?(callback: () => void): () => void };
+declare global { interface Window { cloudreel?: Bridge } }

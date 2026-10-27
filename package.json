@@ -1,0 +1,93 @@
+{
+  "name": "cloudreel",
+  "version": "0.3.16",
+  "private": true,
+  "license": "MIT",
+  "description": "云映 — 百度网盘与 Trakt 的 Windows 影视客户端",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "predev": "npm run setup:desktop && npm run native:build",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "prestart": "npm run setup:desktop && npm run native:build",
+    "start": "electron .",
+    "build": "tsc --noEmit && vite build",
+    "test": "node --test tests/*.test.mjs",
+    "pretest": "npm run native:build",
+    "check": "npm run test && npm run build",
+    "native:build": "node scripts/build-native.mjs",
+    "setup:mpv": "node scripts/setup-mpv.mjs",
+    "setup:desktop": "node scripts/setup-electron.mjs",
+    "predist": "npm run setup:desktop",
+    "dist": "npm run build && electron-builder --win portable --x64",
+    "icons:build": "node scripts/build-icons.mjs",
+    "prebuild": "npm run native:build && npm run icons:build",
+    "configure:trakt": "node scripts/configure-trakt.mjs"
+  },
+  "dependencies": {
+    "koffi": "3.3.3",
+    "lucide-react": "^0.468.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "latest",
+    "7zip-bin": "^5.2.0",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "typescript": "^5.9.3",
+    "vite": "8.3.5"
+  },
+  "build": {
+    "appId": "dev.cloudreel.player",
+    "productName": "CloudReel",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "config/services.json",
+      "package.json",
+      "assets/brand/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "electron",
+        "to": "player",
+        "filter": [
+          "player-keys.conf",
+          "player-shortcuts.lua"
+        ]
+      },
+      {
+        "from": ".runtime/mpv",
+        "to": "mpv",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/brand/app.ico",
+      "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "CloudReel-${version}-win-x64.exe"
+    },
+    "asarUnpack": [
+      "node_modules/koffi/**/*",
+      "node_modules/@koromix/**/*",
+      "electron/native/*.dll"
+    ]
+  },
+  "author": {
+    "name": "CloudReel"
+  }
+}

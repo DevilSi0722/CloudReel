@@ -1,0 +1,40 @@
+# Dependencies, generated builds and downloaded runtimes
+node_modules/
+dist/
+release/
+.runtime/
+electron/native/*.dll
+
+# Local diagnostics, screenshots and private test profiles
+.local/
+output/
+.playwright-cli/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Machine-local configuration and credentials
+.env
+.env.*
+!.env.example
+config/services.json
+state.json
+state.json.*
+Local State
+Cookies
+Cookies-journal
+Cookies-wal
+Cookies-shm
+Login Data
+Login Data-journal
+Web Data
+Web Data-journal
+*.pem
+*.key
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

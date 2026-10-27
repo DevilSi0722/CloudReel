@@ -1,0 +1,6 @@
+LIBRARY cloudreel-input.dll
+
+EXPORTS
+CloudReelCursorHidden
+CloudReelInputInstall
+CloudReelInputRemove

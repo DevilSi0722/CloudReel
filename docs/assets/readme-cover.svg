@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">CloudReel</title>
+  <desc id="description">CloudReel, a Windows cinema client connecting Baidu Netdisk, TMDB and Trakt.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1280" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101828"/>
+      <stop offset=".55" stop-color="#0C1220"/>
+      <stop offset="1" stop-color="#161E31"/>
+    </linearGradient>
+    <radialGradient id="light" cx="0" cy="0" r="1" gradientTransform="translate(1000 110) rotate(122) scale(430 650)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#839DCB" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#839DCB" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1280" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C3D4F0" stop-opacity=".18"/>
+      <stop offset=".5" stop-color="#C3D4F0" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#C3D4F0" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="40" y1="29" x2="89" y2="99" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/><stop offset=".4" stop-color="#EDF3FF"/><stop offset=".72" stop-color="#BFCDE7"/><stop offset="1" stop-color="#859BC4"/>
+    </linearGradient>
+    <linearGradient id="ribbon" x1="39" y1="82" x2="105" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B7C9EE"/><stop offset=".52" stop-color="#E6EEFF"/><stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="77" y1="68" x2="91" y2="83" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#718BB9"/><stop offset="1" stop-color="#C4D4EF"/>
+    </linearGradient>
+    <clipPath id="rounded"><rect width="1280" height="360" rx="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded)">
+    <rect width="1280" height="360" fill="url(#background)"/>
+    <rect width="1280" height="360" fill="url(#light)"/>
+    <g stroke="#ADC4EB" stroke-opacity=".055">
+      <circle cx="1110" cy="170" r="245"/>
+      <circle cx="1110" cy="170" r="193"/>
+      <circle cx="1110" cy="170" r="141"/>
+    </g>
+    <path d="M914 316C984 220 1052 272 1126 195C1180 138 1224 108 1322 128" stroke="#D2E0FA" stroke-opacity=".07" stroke-width="24"/>
+    <rect x=".5" y=".5" width="1279" height="359" rx="23.5" stroke="url(#edge)"/>
+    <g font-family="Segoe UI, Inter, Arial, sans-serif">
+      <text x="96" y="65" fill="#A8BAD9" font-size="11" font-weight="600" letter-spacing="3.2">CINEMA, CONNECTED.</text>
+      <text x="1184" y="65" fill="#8697B5" text-anchor="end" font-size="10" font-weight="500" letter-spacing="2.4">OPEN SOURCE</text>
+      <g transform="translate(73 105) scale(1.24)">
+        <path d="M96 40C89 29 77 23 64 23C42.5 23 25 40.5 25 62C25 83.5 42.5 101 64 101C78 101 91 93.5 98 82L82.5 72.5C78.5 79 72 83 64 83C52.4 83 43 73.6 43 62C43 50.4 52.4 41 64 41C71 41 77.5 44.5 81.5 50.5L96 40Z" fill="url(#silver)"/>
+        <path d="M30.5 82C43 88.5 52 83 62 76.5L73 69.5C83 63 94 62.5 105 68L101 77C97.5 84.5 88.5 87.5 81 84L73 80C61 74 53 95 42 92.5C37.5 90 33.5 86.5 30.5 82Z" fill="url(#fold)"/>
+        <path d="M30.5 80C43 86.5 52 81 62 74.5L73 67.5C83 61 94 60.5 105 66L102.5 71.5C99 79 90 82 82.5 78.5L75 75C62.5 69 52 91 42 90.5C37.5 88 33.5 84.5 30.5 80Z" fill="url(#ribbon)"/>
+        <path d="M29 49C34.5 34 48 24 64 24C76 24 87 29.5 94.5 39.5" stroke="#FFFFFF" stroke-opacity=".6" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <text x="244" y="185" fill="#F1F5FD" font-size="66" font-weight="600" letter-spacing="-2.5">CloudReel</text>
+      <text x="248" y="224" fill="#9EAECA" font-size="18" font-weight="400" letter-spacing=".6">Your library. Beautifully in sync.</text>
+      <path d="M96 280H1184" stroke="#B4C7E7" stroke-opacity=".12"/>
+      <text x="96" y="316" fill="#96A8C8" font-size="10" font-weight="500" letter-spacing="2">BAIDU NETDISK</text>
+      <circle cx="249" cy="312" r="1.5" fill="#576B8E"/>
+      <text x="275" y="316" fill="#96A8C8" font-size="10" font-weight="500" letter-spacing="2">TMDB</text>
+      <circle cx="344" cy="312" r="1.5" fill="#576B8E"/>
+      <text x="370" y="316" fill="#96A8C8" font-size="10" font-weight="500" letter-spacing="2">TRAKT</text>
+      <text x="1184" y="316" fill="#7E91B2" text-anchor="end" font-size="10" font-weight="500" letter-spacing="2">BUILT FOR WINDOWS</text>
+    </g>
+  </g>
+</svg>

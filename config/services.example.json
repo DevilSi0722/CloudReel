@@ -1,0 +1,6 @@
+{
+  "trakt": {
+    "redirectUri": "https://cloudreel.dscode.win/cloudreel/trakt/callback",
+    "clientId": "oAxLEgvWInzzIVwseUu5324RwV_1Ee1w62y_SsiJLCM"
+  }
+}

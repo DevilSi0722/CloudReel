@@ -4,5 +4,7 @@ import App from './App';
 import PlayerOverlayApp from './PlayerOverlayApp';
 import './styles.css';
 import './desktop.css';
+import './settings.css';
+import './controls.css';
 const Root = location.hash === '#player-controls' ? PlayerOverlayApp : App;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><Root /></React.StrictMode>);

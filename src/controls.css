@@ -1,0 +1,30 @@
+/* Customizable native pickers preserve keyboard navigation, typeahead, and
+   top-layer placement inside dialogs and above the native player surface. */
+select {cursor:pointer;}
+@supports (appearance:base-select) {
+  select,select::picker(select) {appearance:base-select;}
+  select {align-items:center;gap:14px;border:1px solid #ffffff10;border-radius:9px;background:#25262c;padding:9px 12px;color:#dfe1ed;line-height:1.5;white-space:nowrap;}
+  select:hover {background-color:#2d2e36;border-color:#ffffff24;}
+  select:open {background-color:#2b2d36;border-color:#a9b7e459;}
+  select::picker-icon {color:#8f96ad;transition:rotate .18s;}
+  select:open::picker-icon {rotate:180deg;}
+  select::picker(select) {margin:7px 0;padding:6px;border:1px solid #ffffff1a;border-radius:12px;background:#24252cf7;color:#e0e2ed;box-shadow:0 12px 38px #0007,0 2px 8px #0004;max-height:min(340px,60vh);max-width:min(620px,calc(100vw - 32px));min-width:anchor-size(width);overflow:auto;scrollbar-width:thin;scrollbar-color:#606472 transparent;font-size:var(--type-small);}
+  select option {display:flex;align-items:center;gap:12px;min-height:38px;padding:9px 12px;border-radius:7px;background:transparent!important;color:#c9cbd7;white-space:normal;overflow-wrap:anywhere;line-height:1.45;}
+  select option:hover,select option:focus {background:#ffffff0b!important;color:#fff;outline:none;}
+  select option:checked {color:#e3e8ff;background:#a7b7ee17!important;}
+  select option::checkmark {color:#b6c6f1;}
+  select option:disabled {opacity:.35;}
+  .library-controls select {border:1px solid #ffffff0c;background:#ffffff04;padding:8px 12px;color:#b9bdcd;}
+  .version-select select {overflow:hidden;text-overflow:ellipsis;}
+  .cinema select::picker(select) {font-size:12px;}
+}
+
+/* Cache and played ranges share the thumb's centre-to-centre travel area. */
+.timeline-rail {position:absolute;left:5px;right:5px;top:50%;height:3px;transform:translateY(-50%);border-radius:4px;background:#ffffff25;overflow:hidden;pointer-events:none;transition:height .15s;}
+.timeline-buffered,.timeline-played {position:absolute;top:0;bottom:0;pointer-events:none;}
+.timeline-buffered {background:#ffffff52;}
+.timeline-played {left:0;background:#f5f5fa;}
+.timeline-track:hover .timeline-rail,.timeline.is-scrubbing .timeline-rail {height:5px;}
+.timeline .timeline-track input {position:relative;z-index:1;background:none;}
+.timeline-preview {z-index:2;}
+@media(prefers-reduced-motion:reduce) {select::picker-icon,.disclosure-chevron,.timeline-rail {transition:none;}}

@@ -137,7 +137,7 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.9px; margin: 0; }
 .advanced-settings { margin-top: 28px; border: 1px solid var(--border); border-radius: 11px; }
 summary { cursor: pointer; list-style: none; font-size: 12px; color: #9d9da7; display: flex; align-items: center; justify-content: space-between; padding: 18px 21px; }
 summary::-webkit-details-marker { display: none; }
-details[open] > summary svg { transform: rotate(180deg); }
+details[open] > summary > svg.lucide-chevron-down { transform: rotate(180deg); }
 .advanced-body { padding: 0 22px 22px; }
 .advanced-body h3 { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
 .field { display: flex; flex-direction: column; gap: 9px; color: #b1b1ba; font-size: 11px; margin: 19px 0; }

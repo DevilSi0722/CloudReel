@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.16-899cc4?style=flat-square" alt="Version 0.3.16" />
+  <img src="https://img.shields.io/badge/version-0.3.17-899cc4?style=flat-square" alt="Version 0.3.17" />
   <img src="https://img.shields.io/badge/platform-Windows_x64-64748b?style=flat-square" alt="Windows x64" />
   <img src="https://img.shields.io/badge/Node.js-24_LTS-64748b?style=flat-square" alt="Node.js 24 LTS" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT License" /></a>
@@ -95,12 +95,13 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 | `npm test` | 执行自动化测试，包括隐藏窗口回归测试 |
 | `npm run build` | 编译原生组件、生成图标、检查 TypeScript 并构建前端 |
 | `npm run check` | 执行测试与完整构建 |
+| `npm run verify:playback` | 隔离正式会话，在隐藏窗口验证真实百度网盘电影与剧集播放 |
 | `npm run dist` | 打包 Windows x64 便携版 |
 
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-0.3.16-win-x64.exe
+release/CloudReel-0.3.17-win-x64.exe
 ```
 
 便携版包含所需运行库，使用者无需安装 Node.js。构建产物不提交到源码仓库，可通过 GitHub Releases 分发。

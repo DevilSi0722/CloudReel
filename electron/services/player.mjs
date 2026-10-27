@@ -12,6 +12,7 @@ import {SubtitleService, isSubtitle} from './subtitles.mjs';
 import {playbackDefaults, validatePlayback, preferredTrack, describeTrack} from '../core/playback-preferences.mjs';
 import {playbackKey, versionKey, episodeChoices} from '../core/versions.mjs';
 import { subtitlePosition } from '../core/player-subtitles.mjs';
+import { bufferedRanges } from '../core/player-buffer.mjs';
 
 export function discoverMpv(configured, resourceDirectory, projectDirectory) {
   const executable = process.platform === 'win32' ? 'mpv.exe' : 'mpv';
@@ -25,7 +26,7 @@ export class PlayerService {
     Object.assign(this, { store, baidu, trakt, sync, resolveMpv, notify, videoHost, inputConfig, fullscreen, toggleFullscreen, onAction, spawnPlayer }); this.session = null; this.opening = false; this.subtitles = new SubtitleService(baidu);
     this.gestures = new PlayerGestures({session: () => this.session, control: input => this.control(input, true), seek: value => this.seek(value), pause: () => this.togglePause(), notify});
   }
-  status() { const session = this.session; return session ? { switching: session.switching ?? null, loadError: session.loadError ?? null, itemId: session.item.id, title: session.item.title, paused: session.paused, position: session.position, duration: session.duration, speed: session.speed, volume: session.volume, muted: session.muted, buffering: session.buffering, tracks: session.tracks, aid: session.aid || 'no', sid: session.sid || 'no', fullscreen: this.fullscreen(), embedded: Boolean(this.videoHost), ready: session.duration > 0, boosting: Boolean(session.boosting), hint: session.hint, subtitleStyle: {delay: session.preferences?.subtitleDelay ?? 0, size: session.preferences?.subtitleSize ?? 44, font: session.preferences?.subtitleFont ?? 'Microsoft YaHei'}, subtitlesLoading: Boolean(session.subtitlesLoading), upNext: this.upNext(session), seek: session.seek && {id: session.seek.id, target: session.seek.target, pending: session.seek.pending, error: session.seek.error}, video: videoPlaybackStatus(session) } : null; }
+  status() { const session = this.session; return session ? { switching: session.switching ?? null, loadError: session.loadError ?? null, itemId: session.item.id, title: session.item.title, paused: session.paused, position: session.position, duration: session.duration, speed: session.speed, volume: session.volume, muted: session.muted, buffering: session.buffering, buffered: bufferedRanges(session.cacheState, session.duration), tracks: session.tracks, aid: session.aid || 'no', sid: session.sid || 'no', fullscreen: this.fullscreen(), embedded: Boolean(this.videoHost), ready: session.duration > 0, boosting: Boolean(session.boosting), hint: session.hint, subtitleStyle: {delay: session.preferences?.subtitleDelay ?? 0, size: session.preferences?.subtitleSize ?? 44, font: session.preferences?.subtitleFont ?? 'Microsoft YaHei'}, subtitlesLoading: Boolean(session.subtitlesLoading), upNext: this.upNext(session), seek: session.seek && {id: session.seek.id, target: session.seek.target, pending: session.seek.pending, error: session.seek.error}, video: videoPlaybackStatus(session) } : null; }
   async prepareMedia(item, {quiet = false, signal} = {}) {
     if (item.source !== 'baidu') {
       if (!fs.existsSync(item.path)) throw new Error('本地视频已移动或不存在。');
@@ -184,7 +185,7 @@ export class PlayerService {
             this.event(session.transport.current,event);
           } catch { /* Ignore unrelated malformed IPC messages. */ } }
         });
-        ['time-pos', 'duration', 'pause', 'speed', 'volume', 'mute', 'paused-for-cache', 'track-list', 'aid', 'sid', 'video-params', 'video-target-params', 'hwdec-current', 'current-vo', 'sub-delay', 'container-fps'].forEach((property, index) => socket.write(JSON.stringify({ command: ['observe_property', index + 1, property] }) + '\n'));
+        ['time-pos', 'duration', 'pause', 'speed', 'volume', 'mute', 'paused-for-cache', 'demuxer-cache-state', 'track-list', 'aid', 'sid', 'video-params', 'video-target-params', 'hwdec-current', 'current-vo', 'sub-delay', 'container-fps'].forEach((property, index) => socket.write(JSON.stringify({ command: ['observe_property', index + 1, property] }) + '\n'));
         session.ready = true;
         if (session.subtitleLayout) this.subtitleLayout(session.subtitleLayout);
         return;
@@ -199,7 +200,7 @@ export class PlayerService {
   event(session, event) {
     if (this.session !== session || session.finishing) return;
     if(event.event==='start-file') {
-      session.acceptProperties=true;session.previousRelay?.close();session.previousRelay=null;
+      session.cacheState=null;session.acceptProperties=true;session.previousRelay?.close();session.previousRelay=null;
     }
     if(event.event==='file-loaded' && session.acceptProperties!==false) {
       session.loaded=true;session.loadError=null;clearTimeout(session.loadTimer);this.notify();
@@ -236,6 +237,7 @@ export class PlayerService {
     if (event.event !== 'property-change') return;
     const videoProperty = {'video-params': 'videoParams', 'video-target-params': 'videoTarget', 'hwdec-current': 'hwdec', 'current-vo': 'vo'}[event.name];
     if (videoProperty) { session[videoProperty] = event.data ?? null; this.recordTechnical(session); this.notify(); return; }
+    if (event.name === 'demuxer-cache-state') {session.cacheState = event.data ?? null; this.notify(); return;}
     if (event.data === undefined || event.data === null) return;
     if (event.name === 'time-pos' && Number.isFinite(Number(event.data)) && Number(event.data) >= 0) {session.position = Number(event.data); this.settleSeek(session);}
     if (event.name === 'duration') session.duration = Number(event.data);

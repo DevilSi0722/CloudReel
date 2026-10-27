@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Cloud, Film, FolderOpen, Heart, Home, Info, LoaderCircle, Plus, RefreshCw, Search, Settings2, Tv, X } from 'lucide-react';
 import { bridge, emptyState } from './bridge';
 import type { AppState, BaiduAuth, Collection, MediaItem } from './types';
-import { Activity, Empty, MatchModal, Modal, Settings, Sources, Toggle, type Run } from './ui';
+import { Activity, Empty, MatchModal, Modal, Sources, Toggle, type Run } from './ui';
 import Details, { MetadataMatch } from './Details';
 import MetadataSettings from './MetadataSettings';
+import Settings from './Settings';
 import Player from './Player';
 import PlayerViewport from './PlayerViewport';
 import BrandMark from './BrandMark';
@@ -21,7 +22,7 @@ export default function App() {
   const [busy, setBusy] = useState(0), [toast, setToast] = useState<{text: string; error: boolean} | null>(null);
   const [selected, setSelected] = useState<string[] | null>(null), [matching, setMatching] = useState<string[] | null>(null), [traktMatch, setTraktMatch] = useState<MediaItem | null>(null);
   const [traktOpen, setTraktOpen] = useState(false);
-  const [advanced, setAdvanced] = useState(false), [addOpen, setAddOpen] = useState(false), [baiduAuth, setBaiduAuth] = useState<BaiduAuth | null>(null);
+  const [addOpen, setAddOpen] = useState(false), [baiduAuth, setBaiduAuth] = useState<BaiduAuth | null>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { void bridge.invoke<AppState>('state').then(setState).catch(error => setToast({text: error.message, error: true})); return bridge.onState(setState); }, []);
   useEffect(() => { if (state.accounts.baidu.connected) setBaiduAuth(null); }, [state.accounts.baidu.connected]);
@@ -49,7 +50,7 @@ export default function App() {
       {details ? <Details key={details.id} group={details} state={state} run={run} onBack={() => setSelected(null)} onMatch={setMatching} onTrakt={setTraktMatch} onWatch={onWatch} /> : <>
       {(view === 'home' || view === 'movies' || view === 'shows' || view === 'favorites') && <LibraryView state={state} view={view} query={query} run={run} open={open} connectBaidu={connectBaidu} onWatch={onWatch} />}
       {view === 'sources' && <Sources state={state} run={run} connect={connectBaidu} busy={!!busy} />}
-      {view === 'settings' && <><Settings state={state} run={run} connectBaidu={connectBaidu} connectTrakt={connectTrakt} metadata={<MetadataSettings state={state} run={run} />} advanced={advanced} setAdvanced={setAdvanced} onSaved={() => setToast({text: '设置已保存', error: false})} /></>}
+      {view === 'settings' && <><Settings state={state} run={run} connectBaidu={connectBaidu} connectTrakt={connectTrakt} metadata={<MetadataSettings state={state} run={run} />} /></>}
       {view === 'trakt' && <><div className="page-heading"><h1>观看同步</h1></div><p className="page-subtitle">换一台设备，故事接着上演。</p><section className="settings-group"><div className="account-row"><span className="service-icon trakt"><Check size={24} /></span><div className="row-copy"><h2>Trakt</h2><p>{state.accounts.trakt.connected ? state.accounts.trakt.profile?.username || '已连接' : '同步观看进度与已看记录'}</p></div><button className="button secondary" onClick={state.accounts.trakt.connected ? () => run('trakt:pull') : connectTrakt}>{state.accounts.trakt.sync?.pulling ? '正在读取…' : state.accounts.trakt.connected ? '读取进度' : '登录 Trakt'}</button></div><div className="setting-row"><div><strong>自动同步观看进度</strong><p>每 30 秒读取其他设备的记录，暂停或退出时上传</p></div><Toggle label="自动同步观看进度" checked={state.settings.autoSync} onChange={() => run('settings:save', {autoSync: !state.settings.autoSync})} /></div><div className="setting-row"><div><strong>待同步记录</strong><p>{state.pendingCount ? `${state.pendingCount} 条，网络恢复后自动重试` : '暂无待同步记录'}</p></div><button className="button secondary compact" onClick={() => run('sync:retry')}>重试同步</button></div></section><TraktSyncStatus account={state.accounts.trakt} /><p className="section-note">按影片资料和季集匹配整个片库。正在播放时显示观看状态，准确续播位置在暂停或退出后更新；其他设备读取时可能有短暂延迟。</p>{!state.accounts.trakt.configured && <p className="quiet-notice"><Info size={16} />此版本的 Trakt 登录尚未启用，完成接入后即可直接授权。</p>}<details className="activity-details"><summary>最近活动</summary><Activity state={state} /></details>{state.accounts.trakt.connected && <button className="text-button danger" onClick={() => run('account:disconnect', 'trakt')}>断开 Trakt</button>}</>}
       </>}
     </div>

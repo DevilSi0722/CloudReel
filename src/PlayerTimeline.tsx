@@ -26,6 +26,10 @@ export default function PlayerTimeline({player, run, onDrag, onActivity}: {playe
   const shown = draft ?? pending?.target ?? (player.seek?.pending ? player.seek.target : player.position), percent = Math.max(0, Math.min(100, shown / (player.duration || 1) * 100));
   return <div className={`timeline ${draft !== null ? 'is-scrubbing' : ''} ${pending || player.seek?.pending ? 'is-seeking' : ''}`}>
     <time>{clock(shown)}</time><div className="timeline-track">
+      <div className="timeline-rail" aria-hidden="true">
+        {(player.buffered ?? []).map((range, index) => <span className="timeline-buffered" key={index} style={{left: `${range.start / player.duration * 100}%`, width: `${(range.end - range.start) / player.duration * 100}%`}} />)}
+        <span className="timeline-played" style={{width: `${percent}%`}} />
+      </div>
       {(draft !== null || pending || player.seek?.pending) && <span className="timeline-preview" style={{left: `clamp(38px, ${percent}%, calc(100% - 38px))`}}>{draft === null ? '跳转中 · ' : ''}{clock(shown)}</span>}
       <input aria-label="播放进度" aria-valuetext={`${clock(shown)} / ${clock(player.duration)}`} type="range" min={0} max={player.duration || 1} step={.1} value={shown} disabled={!player.duration} style={{'--played': `${percent}%`} as CSSProperties}
         onPointerDown={event => {if (event.button !== 0) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.focus({preventScroll: true}); pointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); onDrag(true); preview(atPointer(event)); onActivity();}}

@@ -1,6 +1,7 @@
-export const playbackDefaults = {audioLanguage: 'auto', subtitleLanguage: 'zh-Hans', speed: 1, subtitleDelay: 0, subtitleSize: 44, subtitleFont: 'Microsoft YaHei', rememberPlayback: true};
+export const playbackDefaults = {audioLanguage: 'auto', subtitleLanguage: 'zh-Hans', speed: 1, subtitleDelay: 0, subtitleSize: 44, subtitleFont: 'Microsoft YaHei', rememberPlayback: true, skipIntro: 'manual'};
 export function validatePlayback(input = {}) {
   const output = {};
+  if (input.skipIntro !== undefined) {if (!['manual', 'auto', 'off'].includes(input.skipIntro)) throw new Error('无效的片头跳过方式。'); output.skipIntro = input.skipIntro;}
   for (const key of ['audioLanguage', 'subtitleLanguage']) if (input[key] !== undefined) {
     if (!['auto', 'zh-Hans', 'zh-Hant', 'zh', 'en', 'ja', 'ko', 'no'].includes(input[key])) throw new Error('无效的语言偏好。');
     output[key] = input[key];

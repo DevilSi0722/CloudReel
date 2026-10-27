@@ -9,8 +9,8 @@ import {preserveOverlayMouseInput, setOverlayCursorHidden} from './native-input.
 // of the fullscreen owner. Windows system backdrops affect the whole HWND even
 // when shaped, so only individual CSS panels provide the frosted appearance.
 export class PlayerOverlay {
-  constructor({parent, videoHost, root, icon, devUrl}) {
-    Object.assign(this, {parent, videoHost, root, icon, devUrl});
+  constructor({parent, videoHost, root, icon, devUrl, offscreen = false}) {
+    Object.assign(this, {parent, videoHost, root, icon, devUrl, offscreen});
     this.window = null; this.state = null; this.ready = false; this.lastPointer = null; this.pointerInside = null; this.regions = [];
     this.suspended = false; this.layoutTimer = null; this.restoreTimer = null; this.listeners = [];
     this.timer = setInterval(() => this.pointer(), 90); this.timer.unref();
@@ -23,7 +23,7 @@ export class PlayerOverlay {
       ...(process.platform === 'win32' ? {backgroundMaterial: 'none'} : {}),
       width: 980, height: 600, focusable: false, skipTaskbar: true, hasShadow: false, resizable: false, minimizable: false, maximizable: false,
       fullscreenable: false, autoHideMenuBar: true, title: 'CloudReel · 播放控制', icon: this.icon,
-      webPreferences: {preload: path.join(this.root, 'electron/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false}});
+      webPreferences: {preload: path.join(this.root, 'electron/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, offscreen: this.offscreen}});
     this.window = window; this.ready = false; window.setMenu(null);
     window.setFocusable(false);
     this.releaseMouseInput = preserveOverlayMouseInput(window);

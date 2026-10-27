@@ -25,7 +25,7 @@ try {
     // Chromium diagnostics, request data, cookies, or provider error payloads.
     child.stdout.on('data',chunk=>{for(const line of chunk.toString().split('\n')) if(line.startsWith('REAL_PLAYBACK_RESULT ')) process.stdout.write(line+'\n');});
     child.stderr.resume();
-    const timer=setTimeout(()=>{child.kill();resolve(1);},240000);
+    const timer=setTimeout(()=>{child.kill();resolve(1);},600000);
     child.once('error',reject);child.once('exit',result=>{clearTimeout(timer);resolve(result ?? 1);});
   });
   if(code!==0) throw new Error('Real-source acceptance did not pass; no live profile was modified.');

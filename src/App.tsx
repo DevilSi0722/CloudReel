@@ -13,6 +13,7 @@ import TraktConnect from './TraktConnect';
 import TraktSyncStatus from './TraktSyncStatus';
 import LibraryView from './LibraryView';
 import type {WatchResult} from './WatchActions';
+import {transitionPage} from './motion';
 
 type View = 'home' | 'movies' | 'shows' | 'favorites' | 'sources' | 'trakt' | 'settings';
 const titles: Record<View, string> = {home: '现在观看', movies: '电影', shows: '剧集', favorites: '收藏', sources: '文件来源', trakt: '观看同步', settings: '设置'};
@@ -35,19 +36,19 @@ export default function App() {
     catch (error) {setToast({text: (error as Error).message, error: true}); return undefined;}
     finally {if (!quiet) setBusy(n => n - 1);}
   };
-  const navigate = (next: View) => {setView(next); setQuery(''); setSelected(null); setAddOpen(false); window.scrollTo(0, 0);};
+  const navigate = (next: View) => {if (next === view && !selected && !query && !addOpen) return; transitionPage(() => {setView(next); setQuery(''); setSelected(null); setAddOpen(false); window.scrollTo(0, 0);}, Boolean(state.player));};
   const connectBaidu = async () => {setAddOpen(false); const result = await run<BaiduAuth>('baidu:auth'); if (result && result.mode !== 'web') setBaiduAuth(result);};
   const connectTrakt = async () => {setTraktOpen(true); if (state.accounts.trakt.configured) await run('trakt:auth');};
   const details = selected ? state.collections.find(group => group.itemIds.some(id => selected.includes(id))) : null;
   const onWatch = (result: WatchResult) => setToast({text: result.pending ? '已在本机标记，等待同步到 Trakt' : result.connected ? '观看状态已同步到 Trakt' : '已在本机标记，当前未连接 Trakt', error: false});
-  const open = (group: Collection) => {setSelected(group.itemIds); window.scrollTo(0, 0);};
+  const open = (group: Collection) => transitionPage(() => {setSelected(group.itemIds); window.scrollTo(0, 0);}, Boolean(state.player));
   return <div className={`app-shell ${state.runtime.windowChrome ? 'desktop-chrome' : ''} ${state.runtime.fullscreen ? 'is-fullscreen' : ''}`}>
     {state.runtime.windowChrome && !state.runtime.fullscreen && <div className="window-chrome"><span>CloudReel</span></div>}
     <aside className="sidebar"><button className="brand" onClick={() => navigate('home')}><BrandMark /><span>云映<small>CloudReel</small></span></button><span className="nav-label">资料库</span><nav aria-label="资料库导航">{([{id: 'home', icon: Home, name: '现在观看'}, {id: 'movies', icon: Film, name: '电影'}, {id: 'shows', icon: Tv, name: '剧集'}, {id: 'favorites', icon: Heart, name: '收藏'}] as const).map(({id, icon: Icon, name}) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={18} /><span>{name}</span>{(id === 'movies' || id === 'shows') && <small>{state.collections.filter(group => group.kind === (id === 'movies' ? 'movie' : 'episode')).length || ''}</small>}</button>)}</nav><span className="nav-label source-label">我的来源</span><button className={`nav-item ${view === 'sources' ? 'active' : ''}`} onClick={() => navigate('sources')}><Cloud size={18} /><span>百度网盘</span>{state.accounts.baidu.connected && <i className="status-dot" />}</button><button className="nav-item nav-add" onClick={() => setAddOpen(true)}><Plus size={17} /><span>添加媒体</span></button><div className="sidebar-bottom"><button className={`nav-item ${view === 'trakt' ? 'active' : ''}`} onClick={() => navigate('trakt')}><RefreshCw size={17} /><span>观看同步</span>{state.pendingCount > 0 && <small>{state.pendingCount}</small>}</button><button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}><Settings2 size={18} /><span>设置</span></button><div className="sidebar-version">CloudReel <span>{state.runtime.version}</span></div></div></aside>
     <main className="main-area"><header className="topbar"><span>{details ? details.title : ['home', 'movies', 'shows', 'favorites'].includes(view) ? '' : titles[view]}</span><div className="topbar-actions"><label className="search-box"><Search size={15} /><input ref={input} aria-label="搜索片库" placeholder="搜索片库" value={query} onChange={e => {setQuery(e.target.value); setSelected(null); if (!['home', 'movies', 'shows', 'favorites'].includes(view)) setView('home');}} /><kbd>/</kbd></label><button className="icon-button" aria-label="添加媒体" onClick={() => setAddOpen(true)}><Plus size={21} /></button></div></header>
     <div className={`content view-${view} ${details ? 'detail-content' : ''}`}>
       {!state.runtime.desktop && <div className="preview-note">界面预览 · 连接账号与播放请使用桌面版</div>}
-      {details ? <Details key={details.id} group={details} state={state} run={run} onBack={() => setSelected(null)} onMatch={setMatching} onTrakt={setTraktMatch} onWatch={onWatch} /> : <>
+      {details ? <Details key={details.id} group={details} state={state} run={run} onBack={() => transitionPage(() => setSelected(null), Boolean(state.player))} onMatch={setMatching} onTrakt={setTraktMatch} onWatch={onWatch} /> : <>
       {(view === 'home' || view === 'movies' || view === 'shows' || view === 'favorites') && <LibraryView state={state} view={view} query={query} run={run} open={open} connectBaidu={connectBaidu} onWatch={onWatch} />}
       {view === 'sources' && <Sources state={state} run={run} connect={connectBaidu} busy={!!busy} />}
       {view === 'settings' && <><Settings state={state} run={run} connectBaidu={connectBaidu} connectTrakt={connectTrakt} metadata={<MetadataSettings state={state} run={run} />} /></>}

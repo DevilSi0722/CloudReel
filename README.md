@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.17-899cc4?style=flat-square" alt="Version 0.3.17" />
+  <img src="https://img.shields.io/badge/version-0.3.18-899cc4?style=flat-square" alt="Version 0.3.18" />
   <img src="https://img.shields.io/badge/platform-Windows_x64-64748b?style=flat-square" alt="Windows x64" />
   <img src="https://img.shields.io/badge/Node.js-24_LTS-64748b?style=flat-square" alt="Node.js 24 LTS" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT License" /></a>
@@ -39,10 +39,13 @@ CloudReel（云映）是一款开源的 Windows 影视客户端。通过应用�
 | **跨设备续看** | Trakt 登录授权、播放进度同步，以及单集、单季、整部的已观看／未观看标记。 |
 | **精选与接续** | 每日五部精选轮播、继续观看、接下来观看、收藏与筛选。 |
 | **一体化播放** | 内嵌 mpv、无须退出播放器的切集、字幕与音轨选择、倍速、播放偏好和自动连播。 |
+| **画面预览与章节** | 悬停、拖动进度条预览真实片源画面；读取内嵌章节，支持按集、季或整部剧标记片头片尾。 |
 | **真实媒体信息** | 从媒体读取分辨率、动态范围、音频格式与时长，配合文件大小展示，减少对文件名的依赖。 |
 | **桌面质感** | 深色界面、浮层播放控件、鼠标键盘操作，以及适配窗口尺寸和 Windows 显示缩放的排版。 |
 
 HDR 输出与色调映射取决于片源、Windows HDR 设置和显示设备。Dolby Vision 片源按播放器与显示环境的能力处理，不代表原生 Dolby Vision 输出或认证。
+
+文字资料优先简体中文。风格化标题图片采用 TMDB 提供的原始设计；部分图片仅标记为 `zh`，接口未区分简繁，因此仍可能显示繁体字形。
 
 ## 快速开始
 
@@ -101,7 +104,7 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-0.3.17-win-x64.exe
+release/CloudReel-0.3.18-win-x64.exe
 ```
 
 便携版包含所需运行库，使用者无需安装 Node.js。构建产物不提交到源码仓库，可通过 GitHub Releases 分发。

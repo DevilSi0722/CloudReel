@@ -1,0 +1,56 @@
+/* One legible type scale, including the small labels in the video overlay.
+   CSS pixels follow Windows scaling; no document zoom or video resizing. */
+:root {
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+  font-size:clamp(16px,calc(14px + .18vw),20px);
+  --type-caption:max(13px,.82rem);
+  --type-small:max(14px,.92rem);
+  --type-body:1rem;
+  --muted:#a1a2ad;--faint:#8a8c99;
+}
+.sidebar-version,.brand small,.nav-item small {color:#92939f;}
+.file-table-head,.file-footer,.section-note,.settings-section-copy small,
+.settings-section-status,.settings-section-footer p,.about-row small {color:#a0a2af;}
+.media-caption h3,.continue-caption strong {font-size:var(--type-small);}
+.media-caption p,.poster-type,.landscape-card .poster-type,.resume-hint,
+.source-tile small,.sidebar-version,.search-box kbd,.settings-save-status,
+.season-watched-count,.watch-sync-note,.metadata-source,.title-facts small,
+.featured-navigation,.episode-badge,.title-media-facts,.version-select small {font-size:var(--type-caption);}
+.setting-row p,.row-copy p,.field,.connected-label,.section-note,
+.file-size,.activity-row p,.activity-row time,.attribution,.metadata-attribution,
+.trakt-sync-status,.library-menu>p {font-size:var(--type-caption)!important;line-height:1.65;}
+.setting-row strong,.file-name span {font-size:var(--type-body);}
+.button.compact,.quiet-notice,.modal-bottom button {font-size:var(--type-small);}
+.window-chrome span {font-size:13px;}
+.cinema-header strong {font-size:clamp(16px,1rem,21px);font-weight:600;line-height:1.45;}
+.cinema-header span,.video-quality,.cinema-episodes select,.episode-number,
+.player-menu-empty,.shortcut-list>div,.player-feedback,.skip-section,
+.marker-settings label,.marker-settings select,.marker-row small,.marker-settings p,
+.chapter-heading,.chapter-choice time,.timeline-error,.timeline-preview,
+.timeline-picture-caption time,.timeline-picture-caption span {font-size:var(--type-caption);}
+.timeline time {font-size:var(--type-caption);min-width:4em;}
+.timeline-picture-caption {padding:9px 7px 6px;line-height:1.45;}
+.timeline-picture-caption time {min-width:0;}
+.timeline-picture-caption span {max-width:165px;}
+.timeline-picture-image {position:relative;}
+.timeline-picture-image>.preview-refresh {position:absolute;right:8px;bottom:8px;padding:3px;width:23px;height:23px;border-radius:50%;background:#12141bd9;}
+.player-menu-heading,.player-menu-options>button,.cinema-episode strong,
+.marker-row strong,.chapter-choice span,.subtitle-import,.episode-panel-title h2 {font-size:var(--type-small);}
+.marker-row {padding:10px 0;gap:5px;}
+.menu-chapters {width:clamp(340px,24vw,420px);}
+.menu-sub {width:clamp(330px,23vw,410px);}
+.menu-speed {min-width:210px;}
+.subtitle-settings select {width:180px;max-width:65%;}
+.subtitle-settings label,.subtitle-settings select,.subtitle-settings p,
+.subtitle-stepper button,.subtitle-settings .text-button,.up-next-copy small,
+.up-next-copy>span,.cinema-episode small,.player-menu-options small {font-size:var(--type-caption);}
+.speed-button small {font-size:11px;}
+.cinema select::picker(select) {font-size:var(--type-caption);}
+.timeline-picture {width:clamp(256px,18vw,320px);}
+.timeline-picture-image {height:clamp(140px,10vw,176px);}
+@media(max-width:1100px) {
+  .title-media-facts,.title-facts {font-size:var(--type-caption);}
+  .detail-hero {align-items:flex-start;}
+  .title-heading {flex-wrap:wrap;gap:12px;}
+  .title-heading .detail-title-art {max-width:40%;}
+}

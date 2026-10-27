@@ -1,0 +1,76 @@
+/* Motion follows the material: artwork can move inside a still frame;
+   text, hit targets and video geometry remain at their final coordinates. */
+:root {
+  --motion-press:100ms;
+  --motion-menu:120ms;
+  --motion-surface:220ms;
+  --motion-art:420ms;
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-settle:cubic-bezier(.2,.8,.2,1);
+}
+
+/* Frequent actions use light and colour, never whole-button scaling. */
+button,summary,input,select,a {
+  transition:background-color 140ms var(--ease-settle),color 140ms var(--ease-settle),border-color 140ms var(--ease-settle),box-shadow var(--motion-surface) var(--ease-out);
+}
+.icon-button:active:not(:disabled),.featured-navigation button:active {background-color:#ffffff24;transition-duration:var(--motion-press);}
+.button.primary:active:not(:disabled),.button.frosted:active:not(:disabled) {background-color:#d3d3da;transition-duration:var(--motion-press);}
+.button.secondary:active:not(:disabled) {background-color:#414149;transition-duration:var(--motion-press);}
+.toggle span {transition:transform var(--motion-surface) var(--ease-out);}
+.disclosure-chevron,.settings-nested>summary svg {transition:transform var(--motion-surface) var(--ease-out);}
+
+/* Posters have an illuminated edge and a restrained crop zoom. Captions,
+   badges and play targets stay still, including while the mouse is pressed. */
+.poster,.collection-poster,.continue-art,.episode-still {transition:box-shadow var(--motion-art) var(--ease-out);}
+.poster:hover,.collection-poster:hover {box-shadow:0 12px 28px #0006;}
+.collection-poster::after {content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px #ffffff08;pointer-events:none;transition:box-shadow var(--motion-surface) var(--ease-out);}
+.collection-poster:is(:hover,:focus-visible)::after {box-shadow:inset 0 0 0 1px #ffffff40;}
+.collection-poster>img,.continue-details>img,.episode-still>img {transition:transform var(--motion-art) var(--ease-out);}
+.collection-poster:is(:hover,:focus-visible)>img {transform:scale(1.035);}
+.continue-art:hover>.continue-details>img,.continue-art:focus-within>.continue-details>img,
+.episode-still:is(:hover,:focus-visible)>img {transform:scale(1.025);}
+.collection-poster:active>img,.episode-still:active>img,.continue-details:active>img {transform:scale(1.012);transition-duration:var(--motion-press);}
+.poster-hover,.still-play {transition:opacity var(--motion-surface) var(--ease-out),background-color var(--motion-surface) var(--ease-out);}
+.collection-poster:focus-visible .poster-hover,.episode-still:focus-visible .still-play {opacity:1;}
+
+/* Featured slides dissolve as a composition. Only their background has a
+   slow camera drift; the title and buttons never inherit that transform. */
+.featured-slide {transition:opacity 650ms var(--ease-settle),visibility 0s 650ms;}
+.featured-slide.is-active {transition:opacity 650ms var(--ease-settle),visibility 0s;}
+.featured-image img {transform:scale(1);transition:transform 8s linear;}
+.featured-slide.is-active .featured-image img {transform:scale(1.025);}
+.title-heading>div:not(.detail-title-slot) {flex:1;}
+.detail-title-slot {width:clamp(130px,17vw,340px);height:clamp(80px,7vw,130px);max-width:40%;flex-shrink:0;}
+.detail-title-slot .detail-title-art {width:100%;height:100%;max-width:100%;max-height:100%;}
+
+/* Each surface arrives in place. Menus are brisk; dialogs and their scrims
+   have a slower cadence. No transform affects text rendering or hit testing. */
+.modal-backdrop {animation:veil-in var(--motion-surface) ease-out;}
+.modal {animation:dialog-in var(--motion-surface) var(--ease-out);}
+.library-menu,.player-menu,.cinema-episodes {animation:menu-in var(--motion-menu) ease-out;}
+.up-next {animation:recommendation-in 280ms ease-out;}
+.toast,.busy-indicator,.scan-strip {animation:notice-in 180ms ease-out;}
+.modal-backdrop.is-dismissing {animation:veil-out 140ms ease-in forwards;pointer-events:none;}
+.is-dismissing>.modal,.library-menu.is-dismissing {animation:surface-out 140ms ease-in forwards;pointer-events:none;}
+/* Expanding settings never gradually reflows neighbouring labels. */
+details[open]>:not(summary) {animation:disclosure-in 180ms ease-out;}
+
+/* The native overlay needs fixed interaction regions throughout its fade. */
+.cinema-header {transition:opacity 180ms ease-out;}
+.cinema-controls {transition:opacity var(--motion-surface) ease-out;}
+.timeline-picture {animation:preview-in 100ms ease-out;}
+.skip-section {transition:opacity 180ms ease-out;}
+
+@keyframes veil-in {from {opacity:0;}to {opacity:1;}}
+@keyframes veil-out {to {opacity:0;}}
+@keyframes dialog-in {from {opacity:0;}to {opacity:1;}}
+@keyframes menu-in {from {opacity:0;}to {opacity:1;}}
+@keyframes surface-out {to {opacity:0;}}
+@keyframes recommendation-in {from {opacity:0;clip-path:inset(0 0 12px round 18px);}to {opacity:1;clip-path:inset(0 round 18px);}}
+@keyframes notice-in {from {opacity:0;}to {opacity:1;}}
+@keyframes disclosure-in {from {opacity:.3;}to {opacity:1;}}
+
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+  .collection-poster>img,.continue-details>img,.episode-still>img,.featured-image img {transform:none!important;}
+}

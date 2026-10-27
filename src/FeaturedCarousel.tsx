@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type MouseEvent} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, type MouseEvent} from 'react';
 import {ChevronLeft, ChevronRight, Pause, Play, Shuffle} from 'lucide-react';
 import type {Collection, MediaItem} from './types';
 import {Artwork} from './Details';
@@ -13,6 +13,30 @@ export default function FeaturedCarousel({items, active, menuOpen, open, context
   const index = Math.max(0, ids.indexOf(selected)), current = items[index];
   const stopped = paused || hovered || focused || menuOpen || !active || !inView || !pageVisible || reduced;
   useEffect(() => {if (!ids.includes(selected)) setSelected(ids[0]);}, [identity, selected]);
+  useLayoutEffect(() => {
+    const element = root.current; if (!element) return;
+    // A paragraph must never flex-shrink to a fraction of a text line. Reserve
+    // the title, action and gaps first, then clamp to complete available lines.
+    const fit = () => {
+      for (const copy of element.querySelectorAll<HTMLElement>('.featured-copy')) {
+        const overview = copy.querySelector<HTMLElement>('.featured-overview'); if (!overview) continue;
+        const fixed = [...copy.children].filter(child => child !== overview);
+        const occupied = fixed.reduce((height, child) => height + (child as HTMLElement).offsetHeight, 0);
+        const gap = parseFloat(getComputedStyle(copy).rowGap) || 0;
+        const line = parseFloat(getComputedStyle(overview).lineHeight);
+        const lines = Math.max(0, Math.min(4, Math.floor((copy.clientHeight - occupied - gap * fixed.length) / line)));
+        copy.style.setProperty('--featured-lines', String(Math.max(1, lines)));
+        overview.hidden = lines === 0;
+      }
+    };
+    const observer = new ResizeObserver(fit);
+    for (const copy of element.querySelectorAll('.featured-copy')) {
+      observer.observe(copy);
+      for (const child of copy.children) if (!child.matches('.featured-overview')) observer.observe(child);
+    }
+    fit();
+    return () => observer.disconnect();
+  }, [identity, items.map(item => item.group.catalog?.overview ?? '').join('\0')]);
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), {threshold: .15});
     if (root.current) observer.observe(root.current);
@@ -35,7 +59,7 @@ export default function FeaturedCarousel({items, active, menuOpen, open, context
     onContextMenu={event => context(event, current.entries, current.group.title)}>
     {items.map(({group, entries}, n) => <div key={group.id} className={`featured-slide ${n === index ? 'is-active' : ''}`} aria-hidden={n !== index} inert={n !== index} role="group" aria-roledescription="幻灯片" aria-label={`${n + 1} / ${items.length} · ${group.title}`}>
       <div className="featured-image"><Artwork src={group.catalog?.backdrop ?? group.catalog?.poster} title="" wide /></div>
-      <div className="featured-copy"><span className="eyebrow">精选</span><h2 className="featured-title"><TitleArt src={group.catalog?.logo} title={group.title} fallback={group.title} /></h2><p>{group.catalog?.overview?.slice(0, 125)}</p><button className="button frosted" onClick={() => open(group)}>查看影片 <ChevronRight size={15} /></button></div>
+      <div className="featured-copy"><span className="eyebrow">精选</span><h2 className="featured-title"><TitleArt src={group.catalog?.logo} title={group.title} fallback={<span className="featured-title-text">{group.title}</span>} /></h2>{group.catalog?.overview && <p className="featured-overview">{group.catalog.overview}</p>}<button className="button frosted" onClick={() => open(group)}>查看影片 <ChevronRight size={15} /></button></div>
       <WatchBadge entries={entries} />
     </div>)}
     <div className="featured-navigation">

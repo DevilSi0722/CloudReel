@@ -1,0 +1,35 @@
+/* tvOS-inspired depth lives inside a stationary focus/click target. */
+.dimensional-poster {overflow:visible;background:transparent;box-shadow:none;isolation:isolate;}
+.dimensional-poster:hover {box-shadow:none;}
+.dimensional-poster::after {content:none;}
+.poster-surface {
+  display:block;position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden;
+  background:#242428;box-shadow:0 6px 20px #0003;backface-visibility:hidden;pointer-events:none;
+  transform:none;
+  transition:transform 420ms var(--ease-out),box-shadow 300ms var(--ease-out);
+}
+.poster-surface::after {content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px #ffffff0b;pointer-events:none;transition:box-shadow 220ms ease-out;}
+.poster-art {position:absolute;inset:0;display:block;}
+.poster-art>img {transition:transform 420ms var(--ease-out);}
+.dimensional-poster:is(:hover,:focus-visible) .poster-art>img {transform:scale(1.035);}
+.dimensional-poster[data-tilting] {z-index:2;}
+.dimensional-poster[data-tilting] .poster-surface {
+  will-change:transform;
+  transform:perspective(900px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)) scale(1.016);
+  box-shadow:0 14px 30px #0006;transition:transform 140ms ease-out,box-shadow 300ms var(--ease-out);
+}
+.dimensional-poster[data-tilting] .poster-art>img {transform:translate(var(--poster-pan-x,0px),var(--poster-pan-y,0px)) scale(1.045);transition:transform 160ms ease-out;}
+.dimensional-poster:is([data-tilting],:focus-visible) .poster-surface::after {box-shadow:inset 0 0 0 1px #ffffff38;}
+.dimensional-poster:focus-visible .poster-hover {opacity:1;}
+.dimensional-poster:active .poster-surface {transform:perspective(900px) rotateX(0deg) rotateY(0deg) scale(.995);transition-duration:100ms;}
+.poster-light {
+  position:absolute;inset:0;pointer-events:none;border-radius:inherit;opacity:0;
+  background:radial-gradient(ellipse at var(--poster-light-x,50%) var(--poster-light-y,50%),#ffffff1a 0%,#ffffff07 32%,#ffffff00 70%);
+  transition:opacity 240ms ease-out;
+}
+.dimensional-poster[data-tilting] .poster-light {opacity:1;}
+@media(prefers-reduced-motion:reduce),(hover:none),(pointer:coarse) {
+  .dimensional-poster .poster-surface,.dimensional-poster:active .poster-surface,
+  .dimensional-poster .poster-art>img {transform:none!important;will-change:auto;}
+  .dimensional-poster .poster-light {display:none;}
+}

@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {ArrowLeft, AudioLines, Check, Expand, FastForward, Gauge, Keyboard, ListVideo, LoaderCircle, Minimize, Pause, Play, Rewind, SkipBack, SkipForward, Subtitles, Upload, Volume2, VolumeX, X} from 'lucide-react';
+import {ArrowLeft, AudioLines, Check, Expand, FastForward, Gauge, Keyboard, ListVideo, ListTree, LoaderCircle, Minimize, Pause, Play, Rewind, SkipBack, SkipForward, Subtitles, Upload, Volume2, VolumeX, X} from 'lucide-react';
 import {bridge} from './bridge';
 import type {AppState} from './types';
 import type {Run} from './ui';
@@ -8,25 +8,26 @@ import {playerPopoverPosition} from './player-layout';
 import {episodeChoices} from '../electron/core/versions.mjs';
 import {Artwork} from './Details';
 import PlayerTimeline from './PlayerTimeline';
+import PlayerNavigation from './PlayerNavigation';
 
-type Menu = 'audio' | 'sub' | 'speed' | 'help' | null;
+type Menu = 'audio' | 'sub' | 'speed' | 'help' | 'chapters' | null;
 export default function Player({state, run, error = ''}: {state: AppState; run: Run; error?: string}) {
   const player = state.player!, item = state.items.find(entry => entry.id === player.itemId);
   const group = state.collections.find(entry => entry.itemIds.includes(player.itemId));
   const episodes = episodeChoices(group?.itemIds.map(id => state.items.find(entry => entry.id === id)).filter(entry => !!entry) ?? [], player.itemId);
   const next = state.items.find(entry=>entry.id===player.upNext?.itemId);
   const [list, setList] = useState(false), [menu, setMenu] = useState<Menu>(null), [visible, setVisible] = useState(true);
-  const [scrubbing, setScrubbing] = useState(false), [season, setSeason] = useState(item?.season ?? 1), [hintVisible, setHintVisible] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false), [previewing, setPreviewing] = useState(false), [season, setSeason] = useState(item?.season ?? 1), [hintVisible, setHintVisible] = useState(false);
   const root = useRef<HTMLElement>(null), latest = useRef(player), timer = useRef(0), runner = useRef(run), rightHeld = useRef(false);
   runner.current = run;
   const pinned = useRef(false), pointerPosition = useRef({x: NaN, y: NaN}), suppressVideoUntil = useRef(0), outside = useRef(false);
-  latest.current = player; pinned.current = list || menu !== null || scrubbing;
+  latest.current = player; pinned.current = list || menu !== null || scrubbing || previewing;
   const reveal = useCallback(() => {
     if (outside.current) return;
     setVisible(true); window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {if (!pinned.current && !latest.current.paused && latest.current.ready) {setVisible(false); (document.activeElement as HTMLElement)?.blur();}}, 3000);
   }, []);
-  useEffect(() => {reveal(); return () => window.clearTimeout(timer.current);}, [reveal, player.itemId, player.paused, player.ready, player.fullscreen, list, menu, scrubbing]);
+  useEffect(() => {reveal(); return () => window.clearTimeout(timer.current);}, [reveal, player.itemId, player.paused, player.ready, player.fullscreen, list, menu, scrubbing, previewing]);
   useEffect(() => bridge.onPlayerActivity?.(reveal), [reveal]);
   useEffect(() => {const old = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => {document.body.style.overflow = old;};}, []);
   useEffect(() => {setSeason(item?.season ?? 1); setScrubbing(false); setMenu(null); outside.current = false; reveal();}, [player.itemId]);
@@ -52,7 +53,7 @@ export default function Player({state, run, error = ''}: {state: AppState; run: 
     const observer = new ResizeObserver(position); observer.observe(element);
     window.addEventListener('resize', position);
     return () => {observer.disconnect(); window.removeEventListener('resize', position);};
-  }, [menu, list, player.fullscreen, player.itemId, player.tracks.length]);
+  }, [menu, list, player.fullscreen, player.itemId, player.tracks.length, player.chapters?.length]);
   useLayoutEffect(() => {
     if (!state.runtime.playerOverlay) return;
     const layout = () => {
@@ -105,6 +106,8 @@ export default function Player({state, run, error = ''}: {state: AppState; run: 
   const index = episodes.findIndex(entry => entry.id === player.itemId);
   const seek = (value: number) => {void run('player:seek', value); reveal();};
   const toggleMenu = (next: Menu) => {setList(false); setMenu(menu === next ? null : next); reveal();};
+  const skipIntro = state.playbackDefaults?.skipIntro !== 'off' && Boolean(player.markers?.introEnd) && player.position < player.markers!.introEnd!;
+  const skipCredits = state.playbackDefaults?.skipIntro !== 'off' && Boolean(player.markers?.creditsStart) && player.position >= player.markers!.creditsStart! && player.duration - player.position > 1;
   const tracks = player.tracks.filter(track => track.type === menu);
   const currentTrack = menu === 'audio' ? player.aid : player.sid;
   return <section ref={root} className={`cinema ${state.runtime.playerOverlay ? 'cinema-overlay' : 'cinema-preview'} ${visible ? 'controls-visible' : 'controls-hidden'}`} aria-label="视频播放器"
@@ -129,9 +132,9 @@ export default function Player({state, run, error = ''}: {state: AppState; run: 
         <span className="episode-number">{entry.id === player.itemId ? <Play size={13} fill="currentColor" /> : String(entry.episode ?? '').padStart(2, '0')}</span><span><strong>{entry.episodeMetadata?.title || `第 ${entry.episode ?? '?'} 集`}</strong>{entry.episodeMetadata?.runtime && <small>{entry.episodeMetadata.runtime} 分钟</small>}</span>{isWatched(entry) && <Check size={14} />}
       </button>)}</div>
     </aside>}
-    {menu && <div className={`player-menu glass-panel menu-${menu}`} data-overlay-region role={menu === 'help' ? 'dialog' : 'menu'} aria-label={menu === 'help' ? '快捷键说明' : menu === 'speed' ? '播放速度' : menu === 'audio' ? '音轨' : '字幕'}>
-      <div className="player-menu-heading"><span>{menu === 'help' ? '快捷键' : menu === 'speed' ? '播放速度' : menu === 'audio' ? '音轨' : '字幕'}</span><button className="icon-button" aria-label="关闭菜单" onClick={() => setMenu(null)}><X size={15} /></button></div>
-      <div className="player-menu-options">{menu === 'help' ? <dl className="shortcut-list">{[['单击画面 / 空格 / K', '播放、暂停'], ['双击画面 / F', '切换全屏'], ['← / →', '后退、前进 5 秒'], ['按住 →', '临时 3 倍速，松开恢复'], ['↑ / ↓ / 画面滚轮', '调节音量'], ['M', '静音'], ['[ / ]', '上一集、下一集'], ['Esc', '关闭浮层、退出全屏或播放'], ['?', '快捷键说明']].map(([key, label]) => <div key={key}><dt>{key}</dt><dd>{label}</dd></div>)}</dl> : menu === 'speed' ? [.25, .5, .75, 1, 1.25, 1.5, 1.75, 2, 3, 4].map(speed => <button key={speed} role="menuitemradio" aria-checked={player.speed === speed} onClick={() => {void run('player:control', {speed}); setMenu(null);}}><span>{speed === 1 ? '正常' : `${speed}×`}</span>{player.speed === speed && <Check size={15} />}</button>) : <>
+    {menu && <div className={`player-menu glass-panel menu-${menu}`} data-overlay-region role={menu === 'help' ? 'dialog' : 'menu'} aria-label={menu === 'help' ? '快捷键说明' : menu === 'speed' ? '播放速度' : menu === 'chapters' ? '章节与片头片尾' : menu === 'audio' ? '音轨' : '字幕'}>
+      <div className="player-menu-heading"><span>{menu === 'help' ? '快捷键' : menu === 'speed' ? '播放速度' : menu === 'chapters' ? '章节与片头片尾' : menu === 'audio' ? '音轨' : '字幕'}</span><button className="icon-button" aria-label="关闭菜单" onClick={() => setMenu(null)}><X size={15} /></button></div>
+      <div className="player-menu-options">{menu === 'chapters' ? <PlayerNavigation player={player} item={item} run={run} onChapter={() => setMenu(null)} /> : menu === 'help' ? <dl className="shortcut-list">{[['单击画面 / 空格 / K', '播放、暂停'], ['双击画面 / F', '切换全屏'], ['← / →', '后退、前进 5 秒'], ['按住 →', '临时 3 倍速，松开恢复'], ['↑ / ↓ / 画面滚轮', '调节音量'], ['M', '静音'], ['[ / ]', '上一集、下一集'], ['Esc', '关闭浮层、退出全屏或播放'], ['?', '快捷键说明']].map(([key, label]) => <div key={key}><dt>{key}</dt><dd>{label}</dd></div>)}</dl> : menu === 'speed' ? [.25, .5, .75, 1, 1.25, 1.5, 1.75, 2, 3, 4].map(speed => <button key={speed} role="menuitemradio" aria-checked={player.speed === speed} onClick={() => {void run('player:control', {speed}); setMenu(null);}}><span>{speed === 1 ? '正常' : `${speed}×`}</span>{player.speed === speed && <Check size={15} />}</button>) : <>
         <button role="menuitemradio" aria-checked={currentTrack === 'no'} onClick={() => {void run('player:control', {[menu === 'audio' ? 'aid' : 'sid']: 'no'}); setMenu(null);}}><span>{menu === 'audio' ? '关闭音频' : '关闭字幕'}</span>{currentTrack === 'no' && <Check size={15} />}</button>
         {tracks.map(track => <button key={track.id} role="menuitemradio" aria-checked={currentTrack === track.id || track.selected} onClick={() => {void run('player:control', {[menu === 'audio' ? 'aid' : 'sid']: track.id}); setMenu(null);}}><span>{track.title || track.lang || `${menu === 'audio' ? '音轨' : '字幕'} ${track.id}`}<small>{track.title && track.lang ? track.lang : track.codec}</small></span>{(currentTrack === track.id || track.selected) && <Check size={15} />}</button>)}
         {!tracks.length && <p className="player-menu-empty">{menu === 'audio' ? '暂无音轨' : player.subtitlesLoading ? '正在匹配字幕…' : '暂无可用字幕'}</p>}
@@ -140,11 +143,12 @@ export default function Player({state, run, error = ''}: {state: AppState; run: 
     </div>}
     {next && player.upNext && <aside className="up-next glass-panel" data-overlay-region data-persistent="true" aria-label="接下来观看"><div className="up-next-art"><Artwork wide src={next.episodeMetadata?.still ?? next.catalog?.backdrop} title={next.episodeMetadata?.title || next.title} /></div><div className="up-next-copy"><small>接下来 · {player.upNext.paused ? '已暂停倒计时' : `${player.upNext.remaining} 秒后播放`}</small><strong>{next.episodeMetadata?.title || next.title}</strong><span>{episodeLabel(next)}</span><button className="button secondary compact" onClick={()=>run('player:play',{id:next.id})}><Play size={13} fill="currentColor" />立即播放</button></div><button className="icon-button" aria-label="取消自动连播" title="取消自动连播" onClick={()=>run('player:cancelNext')}><X size={15} /></button></aside>}
     {(player.boosting || hintVisible) && <div className="player-feedback glass-panel" data-overlay-region data-persistent="true" role="status">{player.boosting ? <><Gauge size={17} />{Math.max(3, player.speed)}× 快进中</> : player.hint?.text}</div>}
+    {(skipIntro || skipCredits) && !player.switching && <button className="skip-section glass-panel" data-overlay-region onClick={() => run('player:skipSection', {itemId: player.itemId, section: skipIntro ? 'intro' : 'credits'})}><SkipForward size={16} />{skipIntro ? '跳过片头' : '跳过片尾'}</button>}
     <footer className="cinema-controls glass-panel" data-overlay-region>
-      <PlayerTimeline player={player} run={run} onDrag={setScrubbing} onActivity={reveal} />
+      <PlayerTimeline enabled={visible && !menu && !list} player={player} run={run} onDrag={setScrubbing} onPreview={setPreviewing} onActivity={reveal} />
       <div className="transport"><div className="transport-left"><button className="icon-button" title={player.muted ? '取消静音' : '静音'} aria-label={player.muted ? '取消静音' : '静音'} onClick={() => run('player:control', {muted: !player.muted})}>{player.muted || !player.volume ? <VolumeX size={20} /> : <Volume2 size={20} />}</button><input className="volume-slider" aria-label="音量" type="range" min={0} max={100} value={player.volume} onChange={e => run('player:control', {volume: Number(e.target.value)})} />{player.video?.source && player.video.output && player.video.source !== 'SDR' && <span className="video-quality" title={[player.video.source + (player.video.dolbyVisionProfile ? ` P${player.video.dolbyVisionProfile}` : ''), `${player.video.output} 输出`, player.video.peakNits ? `目标峰值 ${Math.round(player.video.peakNits)} 尼特` : '', player.video.outputTransfer, player.video.pixelFormat].filter(Boolean).join(' · ')}>{player.video.source === 'Dolby Vision' ? `DV → ${player.video.output}` : player.video.output === 'SDR' ? `${player.video.source} → SDR` : player.video.source}</span>}</div>
         <div className="transport-center"><button className="icon-button" title="上一集" aria-label="上一集" disabled={item?.kind !== 'episode' || index < 1} onClick={() => run('player:adjacent', -1)}><SkipBack size={19} /></button><button className="icon-button seek-button" title="后退 10 秒" aria-label="后退 10 秒" onClick={() => seek((player.seek?.pending ? player.seek.target : player.position) - 10)}><Rewind size={21} fill="currentColor" strokeWidth={1.5} /></button><button className="play-toggle" title={player.paused ? '继续播放' : '暂停'} aria-label={player.paused ? '继续播放' : '暂停播放'} onClick={() => run('player:pause')}>{(!player.ready || player.buffering) ? <LoaderCircle size={23} className="spin playback-spinner" aria-label={player.ready ? '缓冲中' : '正在载入'} /> : player.paused ? <Play size={23} fill="currentColor" /> : <Pause size={23} fill="currentColor" />}</button><button className="icon-button seek-button" title="前进 10 秒" aria-label="前进 10 秒" onClick={() => seek((player.seek?.pending ? player.seek.target : player.position) + 10)}><FastForward size={21} fill="currentColor" strokeWidth={1.5} /></button><button className="icon-button" title="下一集" aria-label="下一集" disabled={item?.kind !== 'episode' || index === episodes.length - 1} onClick={() => run('player:adjacent', 1)}><SkipForward size={19} /></button></div>
-        <div className="transport-right"><button className="icon-button" data-player-anchor="help" title="快捷键 · ?" aria-label="快捷键说明" aria-expanded={menu === 'help'} onClick={() => toggleMenu('help')}><Keyboard size={19} /></button><button className={`icon-button speed-button ${menu === 'speed' ? 'selected' : ''}`} title={`播放速度 · ${player.speed}×`} aria-label="播放倍速" data-player-anchor="speed" aria-expanded={menu === 'speed'} onClick={() => toggleMenu('speed')}><Gauge size={21} />{player.speed !== 1 && <small>{player.speed}×</small>}</button><button className={`icon-button ${menu === 'audio' ? 'selected' : ''}`} title="音轨" aria-label="音轨" data-player-anchor="audio" aria-expanded={menu === 'audio'} onClick={() => toggleMenu('audio')}><AudioLines size={21} /></button><button className={`icon-button ${menu === 'sub' ? 'selected' : ''}`} title="字幕" aria-label="字幕" data-player-anchor="sub" aria-expanded={menu === 'sub'} onClick={() => toggleMenu('sub')}><Subtitles size={21} /></button>{item?.kind === 'episode' && <button className={`icon-button ${list ? 'selected' : ''}`} title="选集" aria-label="分集选择" data-player-anchor="episodes" aria-expanded={list} onClick={() => {setMenu(null); setList(!list); reveal();}}><ListVideo size={22} /></button>}<button className="icon-button" title={player.fullscreen ? '退出全屏' : '全屏'} aria-label={player.fullscreen ? '退出全屏' : '全屏'} onClick={() => run('player:fullscreen')}>{player.fullscreen ? <Minimize size={20} /> : <Expand size={20} />}</button></div>
+        <div className="transport-right"><button className={`icon-button ${menu === 'chapters' ? 'selected' : ''}`} data-player-anchor="chapters" title="章节与片头片尾" aria-label="章节与片头片尾" aria-expanded={menu === 'chapters'} onClick={() => toggleMenu('chapters')}><ListTree size={21} /></button><button className="icon-button" data-player-anchor="help" title="快捷键 · ?" aria-label="快捷键说明" aria-expanded={menu === 'help'} onClick={() => toggleMenu('help')}><Keyboard size={19} /></button><button className={`icon-button speed-button ${menu === 'speed' ? 'selected' : ''}`} title={`播放速度 · ${player.speed}×`} aria-label="播放倍速" data-player-anchor="speed" aria-expanded={menu === 'speed'} onClick={() => toggleMenu('speed')}><Gauge size={21} />{player.speed !== 1 && <small>{player.speed}×</small>}</button><button className={`icon-button ${menu === 'audio' ? 'selected' : ''}`} title="音轨" aria-label="音轨" data-player-anchor="audio" aria-expanded={menu === 'audio'} onClick={() => toggleMenu('audio')}><AudioLines size={21} /></button><button className={`icon-button ${menu === 'sub' ? 'selected' : ''}`} title="字幕" aria-label="字幕" data-player-anchor="sub" aria-expanded={menu === 'sub'} onClick={() => toggleMenu('sub')}><Subtitles size={21} /></button>{item?.kind === 'episode' && <button className={`icon-button ${list ? 'selected' : ''}`} title="选集" aria-label="分集选择" data-player-anchor="episodes" aria-expanded={list} onClick={() => {setMenu(null); setList(!list); reveal();}}><ListVideo size={22} /></button>}<button className="icon-button" title={player.fullscreen ? '退出全屏' : '全屏'} aria-label={player.fullscreen ? '退出全屏' : '全屏'} onClick={() => run('player:fullscreen')}>{player.fullscreen ? <Minimize size={20} /> : <Expand size={20} />}</button></div>
       </div>
     </footer>
   </section>;

@@ -17,6 +17,7 @@ import { MetadataService } from './services/metadata.mjs';
 import { NativeVideoHost } from './services/native-video.mjs';
 import { PlayerOverlay } from './services/player-overlay.mjs';
 import { createMetadataFetcher } from './services/desktop-network.mjs';
+import {ThumbnailService} from './services/thumbnails.mjs';
 import {MediaProbeService} from './services/media-probe.mjs';
 import {LibraryScanner} from './services/scanner.mjs';
 import {validatePlayback} from './core/playback-preferences.mjs';
@@ -85,6 +86,7 @@ else {
   // mpv is an external process: it cannot read Electron's virtual ASAR paths.
   const inputDirectory = app.isPackaged ? path.join(process.resourcesPath, 'player') : path.join(projectDirectory, 'electron');
   const player = new PlayerService(store, baidu, trakt, sync, { resolveMpv, notify, videoHost, inputConfig: path.join(inputDirectory, 'player-keys.conf'), fullscreen: () => window?.isFullScreen() ?? false, toggleFullscreen, onAction: action => controls?.action(action) ?? false });
+  const thumbnails = player.thumbnails = new ThumbnailService(app.getPath('userData'), player);
   const mediaProbe = new MediaProbeService(store,baidu,resolveMpv,notify);
   const scanner = new LibraryScanner(store, baidu, notify, () => scrapeLater());
   function scrapeLater(refresh = false) { if (store.data.settings.autoScrape) void metadata.run({ refresh }); }
@@ -229,6 +231,10 @@ else {
     'player:stop': () => player.stop(),
     'player:pause': () => player.togglePause(),
     'player:activate': () => {if (player.session && window && !window.isDestroyed() && !window.isFocused()) window.focus();},
+    'player:thumbnail': input => thumbnails.request(input),
+    'player:cancelThumbnail': () => thumbnails.cancel(),
+    'player:marker': input => player.setMarker(input),
+    'player:skipSection': input => player.skipSection(input),
     'player:seek': seconds => player.seek(seconds),
     'player:control': input => player.control(input),
     'player:cancelNext': () => player.cancelNext(),
@@ -249,7 +255,7 @@ else {
   ipcMain.handle('cloudreel:invoke', async (event, method, payload) => {
     const overlaySender = controls?.owns(event.sender);
     if (!window || !overlaySender && event.sender !== window.webContents || event.senderFrame !== event.sender.mainFrame) return { ok: false, error: '无效的调用来源。' };
-    const overlayMethods = new Set(['state', 'player:stop', 'player:pause', 'player:activate', 'player:seek', 'player:control', 'player:shortcut', 'player:adjacent', 'player:play', 'player:fullscreen', 'player:overlayRegions', 'player:cancelNext', 'player:resetPreferences', 'player:importSubtitle', 'player:dropSubtitles']);
+    const overlayMethods = new Set(['state', 'player:stop', 'player:pause', 'player:activate', 'player:seek', 'player:control', 'player:shortcut', 'player:adjacent', 'player:play', 'player:fullscreen', 'player:overlayRegions', 'player:cancelNext', 'player:resetPreferences', 'player:importSubtitle', 'player:dropSubtitles', 'player:thumbnail', 'player:cancelThumbnail', 'player:marker', 'player:skipSection']);
     if (overlaySender && !overlayMethods.has(method) || !overlaySender && method === 'player:overlayRegions') return {ok: false, error: '无效的播放器调用。'};
     try {
       if (typeof method !== 'string' || !Object.hasOwn(handlers, method)) throw new Error('不支持的操作。');
@@ -286,7 +292,7 @@ else {
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', event => {
     if (quitting) return; event.preventDefault(); cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
-    void player.stop().catch(() => {}).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
+    void player.stop().catch(() => {}).then(() => thumbnails.reset()).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
   });
   const retryTimer = setInterval(() => { void sync.flush(); }, 60000); retryTimer.unref();
   const pullTimer = setInterval(() => { if (!quitting) void sync.pull(); }, 30000); pullTimer.unref();

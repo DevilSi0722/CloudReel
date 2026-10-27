@@ -22,7 +22,7 @@ export default function Details({ group, state, run, onBack, onMatch, onTrakt, o
       <div className="title-copy">
         <div className="title-heading">
           <div><span className="eyebrow">{group.kind === 'episode' ? '剧集' : '电影'}</span><h1>{group.title}</h1>{catalog?.originalTitle && catalog.originalTitle !== group.title && <p className="original-title">{catalog.originalTitle}</p>}</div>
-          <TitleArt src={catalog?.logo} title={`${group.title} · 标题设计`} className="detail-title-art" />
+          {catalog?.source === 'tmdb' && <div className="detail-title-slot"><TitleArt src={catalog.logo} title={`${group.title} · 标题设计`} className="detail-title-art" /></div>}
         </div>
         {resume && <MediaInfo item={resume} state={state} run={run} />}
         <div className="title-facts">{group.year && <span>{group.year}</span>}{catalog?.rating ? <span className="rating">★ {catalog.rating.toFixed(1)}</span> : null}{group.kind === 'episode' && <span>{group.seasons.length} 季 · 已收录 {group.totalEpisodes} 集</span>}{catalog?.genres?.slice(0, 3).map(genre => <span key={genre}>{genre}</span>)}</div>

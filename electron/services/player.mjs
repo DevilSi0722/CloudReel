@@ -13,6 +13,7 @@ import {playbackDefaults, validatePlayback, preferredTrack, describeTrack} from 
 import {playbackKey, versionKey, episodeChoices} from '../core/versions.mjs';
 import { subtitlePosition } from '../core/player-subtitles.mjs';
 import { bufferedRanges } from '../core/player-buffer.mjs';
+import {readChapters, playbackMarkers, updateMarkers} from '../core/player-navigation.mjs';
 
 export function discoverMpv(configured, resourceDirectory, projectDirectory) {
   const executable = process.platform === 'win32' ? 'mpv.exe' : 'mpv';
@@ -26,7 +27,7 @@ export class PlayerService {
     Object.assign(this, { store, baidu, trakt, sync, resolveMpv, notify, videoHost, inputConfig, fullscreen, toggleFullscreen, onAction, spawnPlayer }); this.session = null; this.opening = false; this.subtitles = new SubtitleService(baidu);
     this.gestures = new PlayerGestures({session: () => this.session, control: input => this.control(input, true), seek: value => this.seek(value), pause: () => this.togglePause(), notify});
   }
-  status() { const session = this.session; return session ? { switching: session.switching ?? null, loadError: session.loadError ?? null, itemId: session.item.id, title: session.item.title, paused: session.paused, position: session.position, duration: session.duration, speed: session.speed, volume: session.volume, muted: session.muted, buffering: session.buffering, buffered: bufferedRanges(session.cacheState, session.duration), tracks: session.tracks, aid: session.aid || 'no', sid: session.sid || 'no', fullscreen: this.fullscreen(), embedded: Boolean(this.videoHost), ready: session.duration > 0, boosting: Boolean(session.boosting), hint: session.hint, subtitleStyle: {delay: session.preferences?.subtitleDelay ?? 0, size: session.preferences?.subtitleSize ?? 44, font: session.preferences?.subtitleFont ?? 'Microsoft YaHei'}, subtitlesLoading: Boolean(session.subtitlesLoading), upNext: this.upNext(session), seek: session.seek && {id: session.seek.id, target: session.seek.target, pending: session.seek.pending, error: session.seek.error}, video: videoPlaybackStatus(session) } : null; }
+  status() { const session = this.session; return session ? { chapters: readChapters(session.chapters, session.duration), markers: playbackMarkers(session.item, this.store.data.playbackMarkers, session.duration), switching: session.switching ?? null, loadError: session.loadError ?? null, itemId: session.item.id, title: session.item.title, paused: session.paused, position: session.position, duration: session.duration, speed: session.speed, volume: session.volume, muted: session.muted, buffering: session.buffering, buffered: bufferedRanges(session.cacheState, session.duration), tracks: session.tracks, aid: session.aid || 'no', sid: session.sid || 'no', fullscreen: this.fullscreen(), embedded: Boolean(this.videoHost), ready: session.duration > 0, boosting: Boolean(session.boosting), hint: session.hint, subtitleStyle: {delay: session.preferences?.subtitleDelay ?? 0, size: session.preferences?.subtitleSize ?? 44, font: session.preferences?.subtitleFont ?? 'Microsoft YaHei'}, subtitlesLoading: Boolean(session.subtitlesLoading), upNext: this.upNext(session), seek: session.seek && {id: session.seek.id, target: session.seek.target, pending: session.seek.pending, error: session.seek.error}, video: videoPlaybackStatus(session) } : null; }
   async prepareMedia(item, {quiet = false, signal} = {}) {
     if (item.source !== 'baidu') {
       if (!fs.existsSync(item.path)) throw new Error('本地视频已移动或不存在。');
@@ -103,6 +104,7 @@ export class PlayerService {
         session.child=previous.child;session.pipe=previous.pipe;session.socket=previous.socket;session.transport=transport;
         session.sequence=this.retireFile(previous,false);
         // Keep the old relay until mpv confirms start-file for its replacement.
+        void this.thumbnails?.reset();
         session.previousRelay=previous.relay;previous.relay=null;
         transport.current=session;this.session=session;adopted=true;this.notify();
         const options={start:resume ? resume.percent!==undefined ? resume.percent+'%' : String(resume.seconds) : '0',speed:String(preferences.speed),pause:'no',aid:'auto',sid:'auto','sub-delay':String(preferences.subtitleDelay),'sub-font-size':String(preferences.subtitleSize),'sub-font':preferences.subtitleFont};
@@ -185,7 +187,7 @@ export class PlayerService {
             this.event(session.transport.current,event);
           } catch { /* Ignore unrelated malformed IPC messages. */ } }
         });
-        ['time-pos', 'duration', 'pause', 'speed', 'volume', 'mute', 'paused-for-cache', 'demuxer-cache-state', 'track-list', 'aid', 'sid', 'video-params', 'video-target-params', 'hwdec-current', 'current-vo', 'sub-delay', 'container-fps'].forEach((property, index) => socket.write(JSON.stringify({ command: ['observe_property', index + 1, property] }) + '\n'));
+        ['time-pos', 'duration', 'pause', 'speed', 'volume', 'mute', 'paused-for-cache', 'demuxer-cache-state', 'chapter-list', 'track-list', 'aid', 'sid', 'video-params', 'video-target-params', 'hwdec-current', 'current-vo', 'sub-delay', 'container-fps'].forEach((property, index) => socket.write(JSON.stringify({ command: ['observe_property', index + 1, property] }) + '\n'));
         session.ready = true;
         if (session.subtitleLayout) this.subtitleLayout(session.subtitleLayout);
         return;
@@ -200,7 +202,7 @@ export class PlayerService {
   event(session, event) {
     if (this.session !== session || session.finishing) return;
     if(event.event==='start-file') {
-      session.cacheState=null;session.acceptProperties=true;session.previousRelay?.close();session.previousRelay=null;
+      session.cacheState=null;session.chapters=[];session.acceptProperties=true;session.previousRelay?.close();session.previousRelay=null;
     }
     if(event.event==='file-loaded' && session.acceptProperties!==false) {
       session.loaded=true;session.loadError=null;clearTimeout(session.loadTimer);this.notify();
@@ -237,6 +239,7 @@ export class PlayerService {
     if (event.event !== 'property-change') return;
     const videoProperty = {'video-params': 'videoParams', 'video-target-params': 'videoTarget', 'hwdec-current': 'hwdec', 'current-vo': 'vo'}[event.name];
     if (videoProperty) { session[videoProperty] = event.data ?? null; this.recordTechnical(session); this.notify(); return; }
+    if (event.name === 'chapter-list') {session.chapters = event.data; this.notify(); return;}
     if (event.name === 'demuxer-cache-state') {session.cacheState = event.data ?? null; this.notify(); return;}
     if (event.data === undefined || event.data === null) return;
     if (event.name === 'time-pos' && Number.isFinite(Number(event.data)) && Number(event.data) >= 0) {session.position = Number(event.data); this.settleSeek(session);}
@@ -275,8 +278,30 @@ export class PlayerService {
       this.enqueue(session, () => this.sync.start(session.item));
     }
     if (Date.now() - session.lastSave > 5000) this.saveProgress(session);
+    this.maybeSkipIntro(session);
+    this.thumbnails?.warm();
     this.warmNext(session);
     this.notify();
+  }
+  setMarker(input) {
+    const session = this.session;
+    if (!session || session.finishing || input?.itemId !== session.item.id || session.seek?.pending) throw new Error('请在当前影片就绪后设置标记。');
+    const records = this.store.data.playbackMarkers ??= {};
+    const result = updateMarkers(session.item, records, {...input, seconds: input.current ? session.position : input.seconds}, session.duration);
+    this.store.persist(); this.notify(); return result;
+  }
+  skipSection(input) {
+    const session = this.session;
+    if (!session || input?.itemId !== session.item.id) throw new Error('影片已切换。');
+    const markers = playbackMarkers(session.item, this.store.data.playbackMarkers, session.duration);
+    if (input.section === 'intro' && markers.introEnd && session.position < markers.introEnd) {session.introSkipped = true; return this.seek(markers.introEnd);}
+    if (input.section === 'credits' && markers.creditsStart && session.position >= markers.creditsStart) return this.seek(Math.max(0, session.duration - .25));
+    throw new Error('当前位置没有可跳过的片头片尾。');
+  }
+  maybeSkipIntro(session) {
+    if (session.preferences?.skipIntro !== 'auto' || session.introSkipped || session.seek?.pending || session.buffering || session.paused || !session.loaded) return;
+    const marker = playbackMarkers(session.item, this.store.data.playbackMarkers, session.duration).introEnd;
+    if (marker && session.position > 0 && session.position < marker) {session.introSkipped = true; this.seek(marker);}
   }
   saveProgress(session) {
     if (session.seek?.pending || !(session.duration > 0) || !(session.position > 0)) return;
@@ -290,7 +315,7 @@ export class PlayerService {
       clearTimeout(session.seekTimer);clearTimeout(session.loadTimer);
       this.saveProgress(session); session.socket?.destroy(); session.relay?.close();session.previousRelay?.close();await this.subtitles.cleanup(session);
       for(const pending of session.transport?.requests.values() ?? []) {clearTimeout(pending.timer);pending.reject(new Error('播放已结束。'));}session.transport?.requests.clear();
-      if (this.session === session) {this.clearWarm(); this.session = null; this.videoHost?.hide(); }
+      if (this.session === session) {void this.thumbnails?.reset(); this.clearWarm(); this.session = null; this.videoHost?.hide(); }
       // Snapshot this session before a new playback can alter the library object.
       const snapshot = structuredClone(session.item);
       await session.sequence;

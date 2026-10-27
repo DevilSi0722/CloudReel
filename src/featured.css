@@ -1,0 +1,29 @@
+/* The feature's own dimensions determine its composition, including when a
+   Windows-scaled desktop leaves only a narrow space beside the sidebar. */
+.featured {container:featured / size;}
+.featured-copy {
+  --featured-lines:1;
+  left:clamp(24px,3cqw,58px);top:clamp(22px,6cqh,32px);bottom:76px;
+  width:54%;max-width:640px;min-height:0;gap:clamp(12px,3cqh,18px);
+  justify-content:center;
+}
+.featured-copy>* {flex-shrink:0;}
+.featured-copy .featured-title {
+  width:100%;height:clamp(72px,24cqh,126px);min-height:0;max-height:none;
+  margin:0;max-width:100%;font-size:clamp(28px,3.5cqw,46px);line-height:1.12;
+}
+.featured-copy .featured-title .title-art {max-width:min(440px,100%);max-height:100%;}
+.featured-title-text {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-height:100%;overflow-wrap:anywhere;font-size:min(1em,10.5cqh);}
+.featured-copy .featured-overview {
+  width:100%;max-width:560px;margin:0;min-height:0;line-height:1.7;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--featured-lines);
+  overflow:hidden;overflow-wrap:anywhere;flex-shrink:0;
+}
+.featured-copy .featured-overview[hidden] {display:none;}
+.featured-copy .button {margin:0;}
+@container featured (max-width:720px) {
+  .featured-copy {width:calc(100% - 48px);max-width:560px;bottom:80px;}
+  .featured-copy .featured-title {font-size:clamp(28px,5cqw,36px);}
+  .featured-copy .featured-title .title-art {max-width:min(420px,100%);}
+  .featured-navigation {right:20px;bottom:18px;}
+}

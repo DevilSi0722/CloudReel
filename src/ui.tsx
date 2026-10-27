@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, Cloud, ExternalLink, Film, Folder, FolderOpen, HardDrive, Home, Info, Link2, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, Search, Trash2, Settings2, Square, Tv, Unplug, X } from 'lucide-react';
 import { bridge, emptyState } from './bridge';
+import {useDismissMotion} from './motion';
 import type { AppState, BaiduAuth, CloudFile, MatchResult, MediaItem } from './types';
 
 export type Run = <T = unknown>(method: string, payload?: unknown) => Promise<T | undefined>;
@@ -41,7 +42,8 @@ export function Empty({ icon, title, text, action }: { icon: ReactNode; title: s
 export function Toggle({ checked, label, onChange, disabled = false }: { checked: boolean; label: string; onChange: () => void; disabled?: boolean }) { return <button className={`toggle ${checked ? 'on' : ''}`} role="switch" aria-label={label} aria-checked={checked} disabled={disabled} onClick={onChange}><span /></button>; }
 export function Activity({ state }: { state: AppState }) { return <div className="activity-list">{state.logs.length ? state.logs.slice(0, 20).map(log => <div className="activity-row" key={log.id}><span className={`activity-dot ${log.level}`} /><p>{log.message}</p><time>{new Date(log.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="section-note">暂无活动记录</p>}</div>; }
 export function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
-  const ref = useRef<HTMLElement>(null), close = useRef(onClose); close.current = onClose;
+  const {closing, dismiss} = useDismissMotion(onClose);
+  const ref = useRef<HTMLElement>(null), close = useRef(dismiss); close.current = dismiss;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const first = () => ref.current?.querySelector<HTMLElement>('button, input, select, textarea, [tabindex="0"]'); first()?.focus();
@@ -51,6 +53,6 @@ export function Modal({ title, children, onClose, wide = false }: { title: strin
     };
     window.addEventListener('keydown', listener); return () => { window.removeEventListener('keydown', listener); previous?.focus(); };
   }, []);
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section ref={ref} className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="关闭窗口" onClick={onClose}><X size={19} /></button></div>{children}</section></div>;
+  return <div className={`modal-backdrop ${closing ? 'is-dismissing' : ''}`} onMouseDown={event => { if (event.target === event.currentTarget) dismiss(); }}><section ref={ref} className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="关闭窗口" onClick={dismiss}><X size={19} /></button></div>{children}</section></div>;
 }
 

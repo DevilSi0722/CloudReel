@@ -4,6 +4,7 @@ import {Check, Circle, EyeOff, Heart, MoreHorizontal, RefreshCw, RotateCcw} from
 import type {MediaItem} from './types';
 import type {Run} from './ui';
 import {continueHidden, watchSummary} from './library';
+import {useDismissMotion} from './motion';
 
 export type WatchResult = {pending: boolean; connected: boolean; count: number};
 export function WatchBadge({entries}: {entries: MediaItem[]}) {
@@ -13,7 +14,8 @@ export function WatchBadge({entries}: {entries: MediaItem[]}) {
 
 type Action = {label: string; icon: ReactNode; action: () => void; separator?: boolean};
 export function ActionMenu({point, title, actions, onClose}: {point: {x: number; y: number}; title: string; actions: Action[]; onClose: () => void}) {
-  const ref = useRef<HTMLDivElement>(null), close = useRef(onClose), previous = useRef(document.activeElement as HTMLElement | null); close.current = onClose;
+  const {closing,dismiss}=useDismissMotion(onClose);
+  const ref = useRef<HTMLDivElement>(null), close = useRef(dismiss), previous = useRef(document.activeElement as HTMLElement | null); close.current = dismiss;
   useLayoutEffect(() => {
     const element = ref.current!;
     element.style.left = `${Math.max(10, Math.min(point.x, innerWidth - element.offsetWidth - 10))}px`;
@@ -29,10 +31,10 @@ export function ActionMenu({point, title, actions, onClose}: {point: {x: number;
         buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
       }
     };
-    window.addEventListener('pointerdown', outside); window.addEventListener('keydown', key); window.addEventListener('resize', onClose); window.addEventListener('scroll', outside, true);
-    return () => {window.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', key); window.removeEventListener('resize', onClose); window.removeEventListener('scroll', outside, true); if (previous.current?.isConnected && !previous.current.closest('[role="menu"]')) previous.current.focus({preventScroll: true});};
+    window.addEventListener('pointerdown', outside); window.addEventListener('keydown', key); window.addEventListener('resize', dismiss); window.addEventListener('scroll', outside, true);
+    return () => {window.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', key); window.removeEventListener('resize', dismiss); window.removeEventListener('scroll', outside, true); if (previous.current?.isConnected && !previous.current.closest('[role="menu"]')) previous.current.focus({preventScroll: true});};
   }, []);
-  return createPortal(<div ref={ref} className="library-menu" role="menu" aria-label={title} onContextMenu={e => e.preventDefault()}><p>{title}</p>{actions.map(action => <button role="menuitem" className={action.separator ? 'menu-divider' : ''} key={action.label} onClick={() => {onClose(); action.action();}}>{action.icon}<span>{action.label}</span></button>)}</div>, document.body);
+  return createPortal(<div ref={ref} className={`library-menu ${closing ? 'is-dismissing' : ''}`} role="menu" aria-label={title} onContextMenu={e => e.preventDefault()}><p>{title}</p>{actions.map(action => <button role="menuitem" className={action.separator ? 'menu-divider' : ''} key={action.label} onClick={() => {dismiss(); action.action();}}>{action.icon}<span>{action.label}</span></button>)}</div>, document.body);
 }
 
 export function useWatchMenu(run: Run, report?: (result: WatchResult) => void) {

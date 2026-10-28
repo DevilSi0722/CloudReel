@@ -9,6 +9,7 @@ import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const packaged=process.argv.includes('--packaged');
+const fixture=process.argv.includes('--details') ? 'real-baidu-details.mjs' : 'real-baidu-playback.mjs';
 const packageRoot=packaged ? path.join(root,'release/win-unpacked/resources/app.asar') : '';
 if(packaged) await fs.access(packageRoot);
 const source=process.env.CLOUDREEL_SOURCE_PROFILE || path.join(process.env.APPDATA,'CloudReel');
@@ -20,7 +21,7 @@ try {
   await fs.copyFile(path.join(source,'Local State'),path.join(directory,'Local State'));
   await fs.cp(path.join(source,partition,'Network'),path.join(directory,partition,'Network'),{recursive:true});
   const code=await new Promise((resolve,reject)=>{
-    const child=spawn(createRequire(import.meta.url)('electron'),[path.join(root,'tests/fixtures/real-baidu-playback.mjs')],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,CLOUDREEL_TEST_DIRECTORY:directory,CLOUDREEL_SOURCE_PROFILE:source,CLOUDREEL_PACKAGE_ROOT:packageRoot}});
+    const child=spawn(createRequire(import.meta.url)('electron'),[path.join(root,'tests/fixtures',fixture)],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,CLOUDREEL_TEST_DIRECTORY:directory,CLOUDREEL_SOURCE_PROFILE:source,CLOUDREEL_PACKAGE_ROOT:packageRoot}});
     // The fixture emits only its deliberately sanitized summary. Never echo
     // Chromium diagnostics, request data, cookies, or provider error payloads.
     child.stdout.on('data',chunk=>{for(const line of chunk.toString().split('\n')) if(line.startsWith('REAL_PLAYBACK_RESULT ')) process.stdout.write(line+'\n');});

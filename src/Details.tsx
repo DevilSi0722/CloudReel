@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronRight, Circle, Film, Heart, Link2, LoaderCircle, Play, Search } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowLeft, Check, ChevronRight, Circle, Film, Heart, Link2, Pencil, Play, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { AppState, CatalogResult, Collection, MediaItem } from './types';
 import { Empty, Modal, type Run } from './ui';
-import { bytes, episodeLabel, episodesOf, isWatched, progressOf, resumeItem, watchingNow, watchSummary } from './library';
-import {MoreButton, useWatchMenu, WatchBadge, type WatchResult} from './WatchActions';
+import { bytes, episodeLabel, episodesOf, progressOf, resumeItem, watchingNow, watchSummary } from './library';
+import {ActionMenu, MoreButton, useWatchMenu, WatchBadge, type WatchResult} from './WatchActions';
 import {episodeChoices, versionKey, versionLabel} from '../electron/core/versions.mjs';
 import TitleArt from './TitleArt';
 
@@ -11,9 +11,19 @@ export function Artwork({ src, title, wide = false }: {src?: string; title: stri
   const [failed, setFailed] = useState('');
   return src && failed !== src ? <img src={src} alt={title} loading="lazy" onError={() => setFailed(src)} /> : <div className={`art-fallback ${wide ? 'wide' : ''}`}><Film size={wide ? 30 : 36} strokeWidth={1} /><span>{title}</span></div>;
 }
-export default function Details({ group, state, run, onBack, onMatch, onTrakt, onWatch }: { group: Collection; state: AppState; run: Run; onBack: () => void; onMatch: (ids: string[]) => void; onTrakt: (item: MediaItem) => void; onWatch: (result: WatchResult) => void }) {
-  const entries = episodesOf(group, state.items), resume = resumeItem(group, state.items), catalog = group.catalog;
-  const [season, setSeason] = useState(resume?.season ?? group.seasons[0] ?? 1), [editing, setEditing] = useState<MediaItem | 'all' | null>(null), [inspecting,setInspecting] = useState<string | null>(null);
+export default function Details({ group, initialItemId, state, run, onBack, onMatch, onTrakt, onWatch }: { group: Collection; initialItemId?: string; state: AppState; run: Run; onBack: () => void; onMatch: (ids: string[]) => void; onTrakt: (item: MediaItem) => void; onWatch: (result: WatchResult) => void }) {
+  const entries = episodesOf(group, state.items), catalog = group.catalog;
+  // Only the continue-watching entry supplies an initial episode. Later progress
+  // updates must not override the user's selection inside this detail page.
+  const choices: MediaItem[] = episodeChoices(entries);
+  choices.sort((a, b) => ((a.season ?? 1) === 0 ? Infinity : a.season ?? 1) - ((b.season ?? 1) === 0 ? Infinity : b.season ?? 1) || (a.episode ?? Infinity) - (b.episode ?? Infinity));
+  const [selectedId, setSelectedId] = useState(() => entries.find(item => item.id === initialItemId)?.id ?? choices[0]?.id), [editing, setEditing] = useState<MediaItem | 'all' | null>(null), [more, setMore] = useState<{x: number; y: number} | null>(null);
+  const [synopsis, setSynopsis] = useState<{title: string; text: string} | null>(null);
+  const current = entries.find(item => item.id === selectedId);
+  const selected = group.kind === 'episode' ? choices.find(item => current && versionKey(item) === versionKey(current)) ?? choices[0] : resumeItem(group, state.items);
+  const season = selected?.season ?? 1;
+  const selectedVersions = selected ? entries.filter(item => versionKey(item) === versionKey(selected)) : [];
+  useEffect(() => {if (group.kind === 'episode' && selected && selected.id !== selectedId) setSelectedId(selected.id);}, [group.kind, selected?.id, selectedId]);
   const menu = useWatchMenu(run, onWatch), summary = watchSummary(entries), seasonEntries = entries.filter(item => (item.season ?? 1) === season), seasonSummary = watchSummary(seasonEntries);
   return <div className="title-details"><button className="back-link" onClick={onBack}><ArrowLeft size={17} />资料库</button>
     <div className={`detail-hero ${catalog?.backdrop ? 'has-backdrop' : ''}`}>
@@ -24,27 +34,56 @@ export default function Details({ group, state, run, onBack, onMatch, onTrakt, o
           <div><span className="eyebrow">{group.kind === 'episode' ? '剧集' : '电影'}</span><h1>{group.title}</h1>{catalog?.originalTitle && catalog.originalTitle !== group.title && <p className="original-title">{catalog.originalTitle}</p>}</div>
           {catalog?.source === 'tmdb' && <div className="detail-title-slot"><TitleArt src={catalog.logo} title={`${group.title} · 标题设计`} className="detail-title-art" /></div>}
         </div>
-        {resume && <MediaInfo item={resume} state={state} run={run} />}
+        {selected && <MediaInfo item={selected} state={state} run={run} />}
         <div className="title-facts">{group.year && <span>{group.year}</span>}{catalog?.rating ? <span className="rating">★ {catalog.rating.toFixed(1)}</span> : null}{group.kind === 'episode' && <span>{group.seasons.length} 季 · 已收录 {group.totalEpisodes} 集</span>}{catalog?.genres?.slice(0, 3).map(genre => <span key={genre}>{genre}</span>)}</div>
         {catalog?.tagline && <p className="tagline">{catalog.tagline}</p>}
-        <p className="title-overview">{catalog?.overview || (catalog ? '暂无简介' : '正在获取影片资料…')}</p>
+        <OverviewPreview text={catalog?.overview || (catalog ? '暂无简介' : '正在获取影片资料…')} label={group.title} hero onRead={setSynopsis} />
         <div className="detail-buttons">
-          <button className="button primary" disabled={!resume} onClick={() => resume && run('player:play', {id: resume.id})}><Play size={16} fill="currentColor" />{resume && progressOf(resume) > 0 && progressOf(resume) < 95 ? '继续观看' : '立即播放'}</button>
+          <button className="button primary" disabled={!selected || selected.unavailable} onClick={() => selected && run('player:play', {id: selected.id})}><Play size={16} fill="currentColor" />{selected && progressOf(selected) > 0 && progressOf(selected) < 95 ? '继续观看' : '立即播放'}</button>
           <button className={`icon-button watch-action ${summary.complete ? 'is-watched' : ''}`} aria-label="观看标记" title={summary.complete ? '已看完 · 观看标记' : '观看标记'} onClick={event => menu.open(event, entries, group.kind === 'episode' ? '全剧 · 已收录分集' : group.title)}>{summary.complete ? <Check size={19} /> : <Circle size={19} />}</button>
           <button className={`icon-button favorite-action ${summary.favorite ? 'selected' : ''}`} aria-label={summary.favorite ? '取消收藏' : '加入收藏'} title={summary.favorite ? '取消收藏' : '加入收藏'} onClick={() => run('library:organize', {ids: group.itemIds, favorite: !summary.favorite})}><Heart size={19} fill={summary.favorite ? 'currentColor' : 'none'} /></button>
-          <button className="icon-button" aria-label="匹配资料" title="匹配资料" onClick={() => onMatch(group.itemIds)}><Search size={19} /></button>
-          <button className="text-button" onClick={() => setEditing('all')}>修正识别</button>
+          <MoreButton label="影片更多操作" onClick={event => {const rect = event.currentTarget.getBoundingClientRect(); setMore({x: rect.right - 250, y: rect.bottom + 6});}} />
         </div>
-        {group.kind === 'episode' && resume && <p className="resume-hint">{episodeLabel(resume)}{watchingNow(resume) ? ' · 正在观看，暂停后更新位置' : progressOf(resume) > 0 && progressOf(resume) < 95 ? ` · 已观看 ${progressOf(resume).toFixed(1)}%` : ''}{resume.episodeMetadata?.title ? ` · ${resume.episodeMetadata.title}` : ''}</p>}
+        {group.kind === 'episode' && selected && <><p className="resume-hint" aria-label="当前选集" aria-live="polite">{episodeLabel(selected)}{selected.episodeMetadata?.title ? ` · ${selected.episodeMetadata.title}` : ''}{selected.unavailable ? ' · 暂不可用' : watchingNow(selected) ? ' · 正在观看' : progressOf(selected) > 0 && progressOf(selected) < 95 ? ` · 已观看 ${progressOf(selected).toFixed(1)}%` : ''}</p><VersionSelect entries={selectedVersions} selected={selected} run={run} /></>}
       </div>
     </div>
-    {group.kind === 'movie' && resume && <VersionSelect entries={entries} selected={resume} run={run} />}
-    {group.kind === 'episode' && <section className="episodes-section"><div className="section-heading"><h2>剧集 <small className="season-watched-count">{seasonSummary.watched}/{seasonSummary.total} 已看</small></h2><div className="season-actions"><select aria-label="选择季数" value={season} onChange={e => setSeason(Number(e.target.value))}>{group.seasons.map(n => <option key={n} value={n}>{n === 0 ? '特别篇' : `第 ${n} 季`}</option>)}</select><MoreButton label="本季观看标记" onClick={event => menu.open(event, seasonEntries, season === 0 ? '特别篇 · 已收录分集' : `第 ${season} 季 · 已收录分集`, false)} /></div></div><div className="episode-grid">{episodeChoices(seasonEntries).map(item => <article className="episode-card" key={item.id} onContextMenu={event => menu.open(event, seasonEntries.filter(entry=>versionKey(entry)===versionKey(item)), episodeLabel(item), false)}><button className="episode-still" aria-label={`播放第 ${item.episode} 集`} onClick={() => run('player:play', {id: item.id})}><Artwork wide src={item.episodeMetadata?.still ?? catalog?.backdrop} title={`第 ${item.episode ?? '?'} 集`} /><span className="still-play"><Play size={24} fill="currentColor" /></span><WatchBadge entries={[item]} />{progressOf(item) > 0 && <span className="poster-progress"><i style={{width: `${progressOf(item)}%`}} /></span>}</button><div className="episode-caption"><button onClick={() => run('player:play', {id: item.id})}><strong>{item.episode}. {item.episodeMetadata?.title || `第 ${item.episode ?? '?'} 集`}</strong>{isWatched(item) && <Check size={13} />}</button><small title={item.path}>{item.episodeMetadata?.runtime ? `${item.episodeMetadata.runtime} 分钟 · ` : ''}{bytes(item.size)} · {item.source === 'baidu' ? '百度网盘' : '本地'}</small><p>{item.episodeMetadata?.overview || item.filename}</p><VersionSelect entries={seasonEntries.filter(entry=>versionKey(entry)===versionKey(item))} selected={item} run={run} /><div className="episode-links"><button className="episode-watch-toggle" onClick={() => menu.mark(seasonEntries.filter(entry=>versionKey(entry)===versionKey(item)), !isWatched(item))}>{isWatched(item) ? '标记未看' : '标记已看'}</button><button onClick={()=>setInspecting(item.id)}>媒体信息</button><button onClick={() => setEditing(item)}>修正季集</button><button onClick={() => onTrakt(item)}>Trakt 匹配</button></div></div></article>)}</div></section>}
-    <section className="metadata-info"><div><h3>影片资料</h3><p>{catalog?.director ? `导演 / 主创　${catalog.director}` : group.kind === 'movie' ? resume?.filename : `${entries.length} 个视频文件`}</p>{catalog?.cast?.length ? <p>演员　{catalog.cast.map(person => person.name).join('、')}</p> : null}<p className="metadata-attribution">{catalog ? `资料来源：${{tmdb: 'TMDB', douban: '豆瓣公开条目', tvmaze: 'TVmaze'}[catalog.source]}` : '尚未匹配元数据'}</p></div><div>{group.kind === 'movie' && resume && <><button className="text-button" onClick={() => run('player:play', {id: resume.id, fromBeginning: true})}>从头播放 <ChevronRight size={13} /></button><button className="text-button" onClick={() => onTrakt(resume)}><Link2 size={13} /> Trakt 匹配</button><p className="file-location">{resume.path}</p><button className="text-button danger" onClick={async () => { if (await run('library:remove', resume.id)) onBack(); }}>从片库移除</button></>}</div></section>
+    {group.kind === 'movie' && selected && <VersionSelect entries={entries} selected={selected} run={run} />}
+    {group.kind === 'episode' && <section className="episodes-section"><div className="section-heading"><h2>剧集 <small className="season-watched-count">{seasonSummary.watched}/{seasonSummary.total} 已看</small></h2><div className="season-actions"><select aria-label="选择季数" value={season} onChange={event => {const first = choices.find(item => (item.season ?? 1) === Number(event.target.value)); if (first) setSelectedId(first.id);}}>{[...group.seasons].sort((a, b) => (a === 0 ? Infinity : a) - (b === 0 ? Infinity : b)).map(n => <option key={n} value={n}>{n === 0 ? '特别篇' : `第 ${n} 季`}</option>)}</select><MoreButton label="本季观看标记" onClick={event => menu.open(event, seasonEntries, season === 0 ? '特别篇 · 已收录分集' : `第 ${season} 季 · 已收录分集`, false)} /></div></div><div className="episode-grid">{choices.filter(item => (item.season ?? 1) === season).map(item => {
+      const versions = seasonEntries.filter(entry => versionKey(entry) === versionKey(item)), active = versionKey(item) === versionKey(selected ?? item);
+      return <article className={`episode-card ${active ? 'is-selected' : ''}`} key={versionKey(item)} onClick={() => setSelectedId(item.id)} onContextMenu={event => menu.open(event, versions, episodeLabel(item), false)}>
+        <button className="episode-still" aria-label={`选择${episodeLabel(item)}`} aria-pressed={active}><Artwork wide src={item.episodeMetadata?.still ?? catalog?.backdrop} title={`第 ${item.episode ?? '?'} 集`} /><WatchBadge entries={versions} />{progressOf(item) > 0 && <span className="poster-progress"><i style={{width: `${progressOf(item)}%`}} /></span>}</button>
+        <div className="episode-caption"><button className="episode-title" aria-pressed={active}><strong>{item.episode}. {item.episodeMetadata?.title || `第 ${item.episode ?? '?'} 集`}</strong></button><small>{item.episodeMetadata?.runtime ? `${item.episodeMetadata.runtime} 分钟 · ` : ''}{bytes(item.size)} · {item.source === 'baidu' ? '百度网盘' : '本地'}</small><OverviewPreview text={item.episodeMetadata?.overview} label={`${episodeLabel(item)}${item.episodeMetadata?.title ? ` · ${item.episodeMetadata.title}` : ''}`} onRead={setSynopsis} /></div>
+      </article>;
+    })}</div></section>}
+    <section className="metadata-info"><div><h3>影片资料</h3><p>{catalog?.director ? `导演 / 主创　${catalog.director}` : group.kind === 'movie' ? selected?.filename : `${entries.length} 个视频文件`}</p>{catalog?.cast?.length ? <p>演员　{catalog.cast.map(person => person.name).join('、')}</p> : null}<p className="metadata-attribution">{catalog ? `资料来源：${{tmdb: 'TMDB', douban: '豆瓣公开条目', tvmaze: 'TVmaze'}[catalog.source]}` : '尚未匹配元数据'}</p></div></section>
     {summary.pending && <p className="watch-sync-note" role="status">观看标记已保存在本机，等待同步到 Trakt。</p>}
-    {inspecting && state.items.find(item=>item.id===inspecting) && <Modal title="媒体信息" wide onClose={()=>setInspecting(null)}><MediaInfo item={state.items.find(item=>item.id===inspecting)!} state={state} run={run} /></Modal>}
     {menu.menu}
-    {editing && <Identify ids={editing === 'all' ? group.itemIds : [editing.id]} item={editing === 'all' ? entries[0] : editing} run={run} onClose={() => setEditing(null)} />}
+    {more && <ActionMenu point={more} title="更多操作" onClose={() => setMore(null)} actions={[
+      ...(selected && !selected.unavailable ? [{label: '从头播放', icon: <RotateCcw size={16} />, action: () => {void run('player:play', {id: selected.id, fromBeginning: true});}}] : []),
+      {label: '匹配海报与资料', icon: <Search size={16} />, action: () => onMatch(group.itemIds)},
+      {label: '修正影片识别', icon: <Pencil size={16} />, action: () => setEditing('all')},
+      ...(group.kind === 'episode' && selected ? [{label: '修正所选分集', icon: <Pencil size={16} />, action: () => setEditing(selected)}] : []),
+      ...(selected ? [{label: 'Trakt 匹配', icon: <Link2 size={16} />, action: () => onTrakt(selected)}] : []),
+      ...(group.kind === 'movie' && selected ? [{label: '从片库移除', icon: <Trash2 size={16} />, separator: true, action: () => {void run('library:remove', selected.id).then(result => {if (result) onBack();});}}] : []),
+    ]} />}
+    {editing && entries[0] && <Identify ids={editing === 'all' ? group.itemIds : [editing.id]} item={editing === 'all' ? entries[0] : editing} run={run} onClose={() => setEditing(null)} />}
+    {synopsis && <Modal title={synopsis.title} className="synopsis-dialog" onClose={() => setSynopsis(null)}><p className="synopsis-full" tabIndex={0}>{synopsis.text}</p></Modal>}
+  </div>;
+}
+
+function OverviewPreview({text, label, hero = false, onRead}: {text?: string; label: string; hero?: boolean; onRead: (synopsis: {title: string; text: string}) => void}) {
+  const [overflowing, setOverflowing] = useState(false);
+  const paragraph = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const element = paragraph.current; if (!element) return;
+    const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
+    const observer = new ResizeObserver(measure); observer.observe(element); measure();
+    return () => observer.disconnect();
+  }, [text]);
+  if (!text) return null;
+  return <div className={`overview-preview ${hero ? 'title-overview' : 'episode-overview'}`}>
+    <p ref={paragraph}>{text}</p>
+    {overflowing && <button className="overview-more" aria-label={`阅读${label}简介`} aria-haspopup="dialog" onClick={event => {event.stopPropagation(); onRead({title: label, text});}}>更多</button>}
   </div>;
 }
 

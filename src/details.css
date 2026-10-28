@@ -1,0 +1,26 @@
+/* An episode is selected in place; the hero owns the single play action. */
+.episode-card {cursor:pointer;}
+.episode-card .episode-still {outline:2px solid transparent;outline-offset:3px;transition:box-shadow 220ms var(--ease-out),outline-color 160ms ease-out;}
+.episode-card.is-selected .episode-still {outline-color:#c4cbdde0;box-shadow:0 0 0 5px #b9c9ef0b,0 8px 24px #0005;}
+.episode-card:not(.is-selected) .episode-still:hover {outline-color:#ffffff45;}
+.episode-card .episode-still:focus-visible {outline-color:#d8e4ff;}
+.episode-card .episode-title {color:#c4c4ce;}
+.episode-card.is-selected .episode-title {color:#fff;}
+.episode-caption>.episode-title {align-items:flex-start;}
+.episode-caption>small {color:var(--muted);}
+.overview-preview {position:relative;cursor:default;}
+.title-copy .title-overview {display:block;overflow:visible;line-height:1.9;}
+.episode-overview {margin-top:9px;line-height:1.7;font-size:var(--type-small);}
+.overview-preview p {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2lh;min-height:2lh;margin:0;padding-inline-end:3.4em;font:inherit;word-break:normal;overflow-wrap:anywhere;}
+.overview-more {position:absolute;inset-inline-end:0;bottom:0;padding:0 0 0 .4em;color:#b9c5e1;font:inherit;line-height:inherit;}
+.overview-more:hover {color:#e2eaff;}
+.synopsis-dialog {width:600px;display:flex;flex-direction:column;overflow:hidden;}
+.synopsis-dialog .modal-heading {flex-shrink:0;gap:20px;align-items:flex-start;}
+.synopsis-dialog .modal-heading h2 {min-width:0;overflow-wrap:anywhere;line-height:1.5;}
+.synopsis-dialog .modal-heading button {flex-shrink:0;}
+.synopsis-full {min-height:0;margin:0;overflow-y:auto;overscroll-behavior:contain;white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--type-small);line-height:1.95;color:#c5c5cf;scrollbar-gutter:stable;}
+.title-copy .version-select {margin:12px 0 0;gap:8px;}
+.title-copy .version-select>small {display:none;}
+.title-details>.metadata-info {grid-template-columns:1fr;}
+.title-copy .title-media-facts {flex-wrap:wrap;row-gap:4px;}
+@media(prefers-reduced-motion:reduce) {.episode-card .episode-still {transition:none;}}

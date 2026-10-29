@@ -46,6 +46,7 @@ test('web file pagination preserves int64 IDs and download signatures never eval
       return json({ result: fields.includes('sign1') ? { sign1: 'Plaintext', sign3: 'Key', sign2: 'throw new Error("must never run")', timestamp: 123 } : { bdstoken: 'x', loginstate: 1 } });
     }
     if (url.pathname === '/api/download') { download = url; return json({ errno: 0, dlink: [{ dlink: 'https://d.pcs.baidu.com/file/video' }] }); }
+    if (url.pathname === '/api/filemetas') return json({info:[{fs_id:'987654321012345678',path:'/影视/video.mkv',isdir:0}]});
     if (url.searchParams.get('num') === '1') return json({ errno: 0, list: [] });
     assert.equal(url.searchParams.get('page'), '2');
     return new Response('{"errno":0,"list":[{"fs_id":987654321012345678,"isdir":0}]}');
@@ -102,7 +103,7 @@ test('media cancellation aborts the transport and errors do not expose signed UR
   }), error=> /媒体连接失败/.test(error.message)&&!error.message.includes('private'));
 });
 
-test('original-file metadata links use the selected path, preserve HDR bytes and require the download identity',async()=>{
+test('original-file metadata uses stable IDs, preserves HDR bytes and requires the download identity',async()=>{
   const store=memoryStore();store.data.items=[{source:'baidu',fsId:'987654321012345678',path:'/剧集/有空格 & 中文/1.DV.HDR.mkv'}];
   let metaCalls=0;
   const service=new BaiduWebService(store,{fetcher:async(input,options)=>{
@@ -110,8 +111,8 @@ test('original-file metadata links use the selected path, preserve HDR bytes and
     if(url.pathname.includes('gettemplate'))return json({result:{bdstoken:'session',loginstate:1}});
     if(url.pathname==='/api/list')return json({list:[]});
     assert.equal(url.pathname,'/api/filemetas','must not fall back to the expired web download ticket');
-    assert.equal(url.searchParams.get('target'),JSON.stringify([store.data.items[0].path])); assert.equal(url.searchParams.get('dlink'),'1');
-    metaCalls++;return new Response('{"info":[{"fs_id":987654321012345678,"dlink":"https://d.pcs.baidu.com/file/original?sign=private"}]}');
+    assert.equal(url.searchParams.get('fsids'),'[987654321012345678]');assert.equal(url.searchParams.has('target'),false); assert.equal(url.searchParams.get('dlink'),'1');
+    metaCalls++;return new Response('{"info":[{"fs_id":987654321012345678,"path":"/剧集/有空格 & 中文/1.DV.HDR.mkv","isdir":0,"dlink":"https://d.pcs.baidu.com/file/original?sign=private"}]}');
   },mediaFetcher:async(url,options)=>{
     assert.equal(new Headers(options.headers).get('user-agent'),'pan.baidu.com');
     assert.equal(new Headers(options.headers).get('range'),'bytes=4294967296-4294967359');
@@ -124,7 +125,7 @@ test('original-file metadata links use the selected path, preserve HDR bytes and
 });
 
 test('file metadata cannot silently select a different file or an untrusted link',async()=>{
-  for(const info of [{fs_id:'456',dlink:'https://pcs.baidu.com/file'},{fs_id:'123',path:'/other',dlink:'https://pcs.baidu.com/file'},{fs_id:'123',dlink:'https://baidu.com.attacker.test/file'}]){
+  for(const info of [{fs_id:'456',path:'/chosen',dlink:'https://pcs.baidu.com/file'},{fs_id:'123',path:'relative',dlink:'https://pcs.baidu.com/file'},{fs_id:'123',path:'/chosen',dlink:'https://baidu.com.attacker.test/file'}]){
     const service=new BaiduWebService(memoryStore(),{fetcher:async input=>new URL(input).pathname==='/api/filemetas'?json({info:[info]}):assert.fail('no other API is expected')});
     service.variables={bdstoken:'session'};service.variablesAt=Date.now();
     await assert.rejects(service.streamUrl('123',{path:'/chosen'}),/不一致|无法识别/);
@@ -140,10 +141,34 @@ test('rejected links force a fresh web-session check and signer without API cach
       checks++;return json({result:{bdstoken:'session-'+checks,loginstate:1}});
     }
     if(url.pathname==='/api/download') {assert.equal(url.searchParams.get('bdstoken'),'session-'+checks);return json({dlink:[{dlink:'https://pcs.baidu.com/file'}]});}
+    if(url.pathname==='/api/filemetas') return json({info:[{fs_id:'123',path:'/video.mkv',isdir:0}]});
     return json({list:[]});
   }});
   await service.streamUrl('123');await service.streamUrl('123');assert.equal(checks,1);
   await service.streamUrl('123',{refresh:true});assert.equal(checks,2);assert.equal(signers,3);
+});
+
+test('rename/move recovery preserves title, metadata and watch identity without a directory scan',async()=>{
+  const store=memoryStore(),progress={position:123,percent:10},metadata={ids:{trakt:42}},catalog={id:'show'};
+  const item={id:'baidu:123',source:'baidu',fsId:'123',path:'/old/03.mkv',filename:'03.mkv',title:'Silicon Valley',progress,metadata,catalog,unavailable:true};store.data.items=[item];
+  let writes=0;store.persist=()=>writes++;
+  const service=new BaiduWebService(store,{fetcher:async input=>{
+    const url=new URL(input);assert.equal(url.pathname,'/api/filemetas');assert.equal(url.searchParams.get('fsids'),'[123]');assert.equal(url.searchParams.has('target'),false);
+    return json({info:[{fs_id:'123',isdir:0,path:'/moved/S04E03.mkv',dlink:'https://pcs.baidu.com/original?private=ticket'}]});
+  }});service.variables={bdstoken:'session'};service.variablesAt=Date.now();
+  await service.streamUrl('123',{path:item.path});
+  assert.equal(item.path,'/moved/S04E03.mkv');assert.equal(item.filename,'S04E03.mkv');assert.equal(item.id,'baidu:123');assert.equal(item.title,'Silicon Valley');
+  assert.equal(item.progress,progress);assert.equal(item.metadata,metadata);assert.equal(item.catalog,catalog);assert.equal(item.unavailable,undefined);assert.equal(writes,1);
+  assert.ok(!JSON.stringify(store.data).includes('private=ticket'));
+});
+
+test('deleted files and replacement identities never overwrite the saved entry',async()=>{
+  for(const response of [{errno:12},{info:[]},{info:[{fs_id:'456',path:'/old/03.mkv',dlink:'https://pcs.baidu.com/wrong'}]},{info:[{fs_id:'123',path:'/folder',isdir:1}]}]) {
+    const store=memoryStore();store.data.items=[{source:'baidu',fsId:'123',path:'/old/03.mkv',filename:'03.mkv',progress:{position:90}}];
+    const before=JSON.stringify(store.data);
+    const service=new BaiduWebService(store,{fetcher:async()=>json(response)});service.variables={bdstoken:'session'};service.variablesAt=Date.now();
+    await assert.rejects(service.streamUrl('123'),/已删除|不一致|文件夹/);assert.equal(JSON.stringify(store.data),before);
+  }
 });
 test('Trakt supports distributor configuration and cancels token exchange after disconnect', async () => {
   const store = memoryStore(); store.data.settings.traktClientId = ''; store.data.settings.traktRedirectUri = '';

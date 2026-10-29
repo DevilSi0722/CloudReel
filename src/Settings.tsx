@@ -1,36 +1,40 @@
-import {useState, type ReactNode} from 'react';
+import {useRef, useState, type ReactNode, type RefObject} from 'react';
 import {Check, ChevronDown, Cloud, Film, Folder, Gauge, LoaderCircle, Plus, RefreshCw, Settings2, SlidersHorizontal, Trash2} from 'lucide-react';
 import type {AppState, PlaybackDefaults} from './types';
 import {Toggle, type Run} from './ui';
 import BrandMark from './BrandMark';
+import {BaiduFolderPicker} from './Sources';
+import WatchSyncSettings from './WatchSyncSettings';
 
-function SettingsSection({title, description, status, icon, children}: {title: string; description: string; status?: string; icon: ReactNode; children: ReactNode}) {
-  return <details className="settings-disclosure"><summary><span className="settings-section-icon">{icon}</span><span className="settings-section-copy"><strong>{title}</strong><small>{description}</small></span>{status && <span className="settings-section-status">{status}</span>}<ChevronDown size={17} className="disclosure-chevron" /></summary><div className="settings-disclosure-body">{children}</div></details>;
+function SettingsSection({title, description, status, icon, children, sectionRef}: {title: string; description: string; status?: string; icon: ReactNode; children: ReactNode; sectionRef?: RefObject<HTMLDetailsElement | null>}) {
+  return <details ref={sectionRef} className="settings-disclosure"><summary><span className="settings-section-icon">{icon}</span><span className="settings-section-copy"><strong>{title}</strong><small>{description}</small></span>{status && <span className="settings-section-status">{status}</span>}<ChevronDown size={17} className="disclosure-chevron" /></summary><div className="settings-disclosure-body">{children}</div></details>;
 }
 
 export default function Settings({state, run, connectBaidu, connectTrakt, metadata}: {state: AppState; run: Run; connectBaidu: () => void; connectTrakt: () => void; metadata: ReactNode}) {
   const [saving, setSaving] = useState<string | null>(null);
+  const syncSection = useRef<HTMLDetailsElement>(null);
+  const showSync = () => {if(syncSection.current) {syncSection.current.open = true;syncSection.current.scrollIntoView({block: 'start'});syncSection.current.querySelector('summary')?.focus({preventScroll:true});}};
   const change = async (key: string, value: boolean) => {setSaving(key); try {await run('settings:save', {[key]: value});} finally {setSaving(null);}};
   return <div className="settings-page">
     <div className="page-heading"><div><h1>设置</h1><p className="heading-caption">让你的影院，更合你的习惯。</p></div><span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={13} className="spin" />正在保存</> : <><Check size={13} />常用设置自动保存</>}</span></div>
     <h3 className="group-label">账号与连接</h3>
     <section className="settings-group settings-accounts" aria-label="账号连接">
       <div className="account-row"><span className="service-icon"><Cloud size={23} /></span><div className="row-copy"><h2>百度网盘</h2><p>{state.accounts.baidu.connected ? state.accounts.baidu.profile?.netdisk_name || '已连接' : '连接你的云端片库'}</p></div><button className="button secondary compact" onClick={connectBaidu}>{state.accounts.baidu.connected ? '管理登录' : '登录'}</button></div>
-      <div className="account-row"><span className="service-icon trakt"><Check size={23} /></span><div className="row-copy"><h2>Trakt</h2><p>{state.accounts.trakt.connected ? state.accounts.trakt.profile?.username || '已连接' : '在不同设备间接着看'}</p></div>{state.accounts.trakt.connected ? <span className="connected-label"><i className="status-dot" />已连接</span> : <button className="button secondary compact" onClick={connectTrakt}>登录</button>}</div>
+      <div className="account-row"><span className="service-icon trakt"><Check size={23} /></span><div className="row-copy"><h2>Trakt</h2><p>{state.accounts.trakt.connected ? state.accounts.trakt.profile?.username || '已连接' : '在不同设备间接着看'}</p></div>{state.accounts.trakt.connected ? <><span className="connected-label"><i className="status-dot" />已连接</span><button className="button secondary compact" onClick={showSync}>管理同步{state.pendingCount > 0 && <span>{state.pendingCount}</span>}</button></> : <button className="button secondary compact" onClick={connectTrakt}>登录</button>}</div>
     </section>
     <h3 className="group-label">日常使用</h3>
     <section className="settings-group" aria-label="常用设置">
       {([
         ['autoNext', '自动播放下一集', '一集结束，故事继续', state.settings.autoNext],
-        ['autoSync', '同步观看进度', '通过 Trakt 保存进度与已看记录', state.settings.autoSync],
-        ['autoRefresh', '自动刷新片库', '启动时及每 15 分钟检查影视目录', state.settings.autoRefresh !== false]
+        ['autoRefresh', '自动刷新片库', '每 15 分钟在后台检查；每次启动都会静默刷新', state.settings.autoRefresh !== false]
       ] as const).map(([key, title, text, checked]) => <div className="setting-row" key={key}><div><strong>{title}</strong><p>{text}</p></div><Toggle label={title} checked={checked} disabled={saving !== null} onChange={() => void change(key, !checked)} /></div>)}
     </section>
     <h3 className="group-label">更多偏好</h3>
     <div className="settings-sections">
       <SettingsSection title="播放偏好" description="音轨、字幕与默认倍速" icon={<Gauge size={20} />} status={`${state.playbackDefaults?.speed ?? 1}×`}><PlaybackSettings state={state} run={run} /></SettingsSection>
+      <SettingsSection title="观看同步" description="Trakt 连接、续播进度与已看记录" icon={<RefreshCw size={20} />} status={state.pendingCount ? `${state.pendingCount} 条待同步` : state.accounts.trakt.connected ? 'Trakt 已连接' : '尚未连接'} sectionRef={syncSection}><WatchSyncSettings state={state} run={run} connect={connectTrakt} /></SettingsSection>
       <SettingsSection title="海报与影片资料" description="自动识别、资料更新与 TMDB 连接" icon={<Film size={20} />} status={state.scrape.connectionError ? '连接异常' : state.scrape.tmdbConfigured ? 'TMDB 已配置' : '公开数据源'}>{metadata}</SettingsSection>
-      <SettingsSection title="影视目录" description="管理扫描来源与默认网盘目录" icon={<Folder size={20} />} status={`${state.scanRoots?.length ?? 0} 个目录`}><ScanFolders state={state} run={run} /></SettingsSection>
+      <SettingsSection title="影视目录" description="管理网盘挂载与本地文件夹" icon={<Folder size={20} />} status={`${state.scanRoots?.length ?? 0} 个目录`}><ScanFolders state={state} run={run} /></SettingsSection>
       <SettingsSection title="高级设置" description="播放器路径与网盘接入方式" icon={<SlidersHorizontal size={20} />} status={state.runtime.mpvReady ? '播放器已就绪' : '待配置播放器'}><AdvancedSettings state={state} run={run} /></SettingsSection>
     </div>
     <div className="about-row"><BrandMark small /><span>云映 <small>CloudReel {state.runtime.version}</small></span></div>
@@ -56,11 +60,11 @@ function PlaybackSettings({state, run}: {state: AppState; run: Run}) {
 }
 
 function ScanFolders({state, run}: {state: AppState; run: Run}) {
-  const [directory, setDirectory] = useState(state.settings.rootDir), [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   return <>
-    {state.scanRoots?.length ? state.scanRoots.map(root => <div className="setting-row" key={root.id}><span className="service-icon neutral">{root.source === 'baidu' ? <Cloud size={20} /> : <Folder size={20} />}</span><div className="scan-folder-copy"><strong title={root.path}>{root.path}</strong><p>{root.error || (root.lastScannedAt ? `${root.count ?? 0} 个视频 · ${new Date(root.lastScannedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}` : '等待扫描')}</p></div><button className="icon-button" aria-label={`刷新目录 ${root.path}`} disabled={state.scan.running} onClick={() => run('library:refresh', {ids:[root.id]})}><RefreshCw size={16} /></button><button className="icon-button" aria-label={`停止监测目录 ${root.path}`} title="停止监测，保留影片" disabled={state.scan.running} onClick={() => run('library:removeRoot', root.id)}><Trash2 size={16} /></button></div>) : <p className="settings-empty">添加影视目录后，可在这里管理自动扫描。</p>}
-    <div className="setting-row"><div><strong>默认网盘目录</strong><p>添加网盘影片时的起始位置</p></div><div className="settings-directory"><input className="row-input" aria-label="默认影视目录" value={directory} onChange={event => setDirectory(event.target.value)} placeholder="/" /><button className="button secondary compact" disabled={busy || directory === state.settings.rootDir} onClick={async () => {setBusy(true); try {await run('settings:save', {rootDir: directory});} finally {setBusy(false);}}}>保存</button></div></div>
-    <div className="settings-section-footer"><p>刷新时保留海报、识别与观看记录。</p><button className="button secondary compact" disabled={state.scan.running} onClick={() => run('library:importFolder')}><Plus size={14} />添加本地目录</button></div>
+    {state.scanRoots?.length ? state.scanRoots.map(root => <div className="setting-row" key={root.id}><span className="service-icon neutral">{root.source === 'baidu' ? <Cloud size={20} /> : <Folder size={20} />}</span><div className="scan-folder-copy"><strong title={root.path}>{root.path}</strong><p>{root.error || (root.lastScannedAt ? `${root.count ?? 0} 个视频 · ${new Date(root.lastScannedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}` : '等待扫描')}</p></div><button className="icon-button" aria-label={`刷新目录 ${root.path}`} disabled={state.scan.running && !state.scan.background} onClick={() => run('library:refresh', {ids:[root.id]})}><RefreshCw size={16} /></button><button className="icon-button" aria-label={`停止监测目录 ${root.path}`} title="停止监测，保留影片" disabled={state.scan.running} onClick={() => run('library:removeRoot', root.id)}><Trash2 size={16} /></button></div>) : <p className="settings-empty">添加影视目录后，可在这里管理自动扫描。</p>}
+    <div className="settings-section-footer"><p>挂载后自动入库，刷新时保留影片资料与观看记录。</p><button className="button secondary compact" disabled={state.scan.running && !state.scan.background || !state.accounts.baidu.connected} onClick={() => setPicking(true)}><Cloud size={14} />挂载网盘文件夹</button><button className="button secondary compact" disabled={state.scan.running && !state.scan.background} onClick={() => run('library:importFolder')}><Plus size={14} />添加本地目录</button></div>
+    {picking && state.accounts.baidu.connected && <BaiduFolderPicker state={state} run={run} onClose={() => setPicking(false)} />}
   </>;
 }
 

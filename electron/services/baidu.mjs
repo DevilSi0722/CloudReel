@@ -1,4 +1,5 @@
 import { ApiError, jsonRequest, withQuery, tokenRecord } from '../core/http.mjs';
+import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
 
 export class BaiduService {
   constructor(store, { fetcher = fetch, oauthBase = 'https://openapi.baidu.com', apiBase = 'https://pan.baidu.com' } = {}) {
@@ -56,14 +57,19 @@ export class BaiduService {
     const files = data.list ?? [];
     return { files, hasMore: files.length === 200, nextStart: start + files.length };
   }
-  async streamUrl(fsId) {
+  async fileInfo(fsId, {dlink = false} = {}) {
     if (!/^\d+$/.test(String(fsId))) throw new Error('无效的网盘文件 ID。');
     // Serialize fsids as numeric JSON without losing precision through Number().
-    const data = await this.request('/rest/2.0/xpan/multimedia', { method: 'filemetas', fsids: `[${fsId}]`, dlink: 1 });
-    const link = data.list?.[0]?.dlink;
+    const data = await this.request('/rest/2.0/xpan/multimedia', { method: 'filemetas', fsids: `[${fsId}]`, dlink: dlink ? 1 : 0 });
+    return baiduFileInfo(data.list, fsId);
+  }
+  async streamUrl(fsId) {
+    const info = await this.fileInfo(fsId, {dlink: true});
+    if (Number(info.isdir) === 1) throw new Error('所选网盘文件是文件夹，无法播放。');
+    const link = info.dlink;
     if (!link) throw new ApiError('百度未返回原文件地址，请检查应用下载权限。');
     const url = new URL(link);
     if (url.protocol !== 'https:' || !/(^|\.)(baidu\.com|baidupcs\.com)$/.test(url.hostname)) throw new Error('百度返回了无法识别的下载域名。');
-    url.searchParams.set('access_token', await this.token()); return url.toString();
+    url.searchParams.set('access_token', await this.token()); rememberBaiduFile(this.store, info); return url.toString();
   }
 }

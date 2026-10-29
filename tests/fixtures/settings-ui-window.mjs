@@ -51,10 +51,10 @@ app.whenReady().then(async()=>{
   await window.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');
   await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await js("Array.from(document.querySelectorAll('.nav-item')).find(b=>b.textContent==='设置').click()");await wait(100);
-  assert.deepEqual(await js("Array.from(document.querySelectorAll('.settings-disclosure')).map(d=>d.open)"),[false,false,false,false]);
+  assert.deepEqual(await js("Array.from(document.querySelectorAll('.settings-disclosure')).map(d=>d.open)"),[false,false,false,false,false]);
   assert.equal(await js("document.querySelector('[aria-label=\"TMDB API Read Access Token\"]').checkVisibility()"),false);
   // Opening a section rotates only its direct chevron, including nested panels.
-  for (let index=0;index<4;index++) {
+  for (let index=0;index<5;index++) {
     for (const open of [true,false]) {
       await js(`document.querySelectorAll('.settings-disclosure')[${index}].querySelector('summary').click()`);await wait(250);
       assert.deepEqual(await js(`(()=>{const section=document.querySelectorAll('.settings-disclosure')[${index}];const rotation=selector=>{const m=new DOMMatrix(getComputedStyle(section.querySelector(selector)).transform);return [Math.round(m.a),Math.round(m.d)];};return {icon:rotation('.settings-section-icon svg'),arrow:rotation(':scope>summary>.disclosure-chevron')};})()`),{icon:[1,1],arrow:open?[-1,-1]:[1,1]},'category icons must stay upright while only the section chevron rotates');

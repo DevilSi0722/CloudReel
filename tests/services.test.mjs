@@ -23,7 +23,7 @@ test('concurrent Baidu requests refresh an expired token once and use pagination
 });
 test('Baidu dlink uses numeric JSON for int64 IDs and appends the access token', async () => {
   const store = memoryStore(); store.setSecret('baiduToken', { access_token: 'my-token', expiresAt: Date.now() + 3600000 });
-  const baidu = new BaiduService(store, { fetcher: async url => { assert.equal(new URL(url).searchParams.get('fsids'), '[987654321012345678]'); return response({ errno: 0, list: [{ dlink: 'https://d.pcs.baidu.com/file/test' }] }); } });
+  const baidu = new BaiduService(store, { fetcher: async url => { assert.equal(new URL(url).searchParams.get('fsids'), '[987654321012345678]'); return response({ errno: 0, list: [{fs_id:'987654321012345678',path:'/test.mkv',isdir:0,dlink: 'https://d.pcs.baidu.com/file/test' }] }); } });
   const url = new URL(await baidu.streamUrl('987654321012345678')); assert.equal(url.searchParams.get('access_token'), 'my-token');
 });
 test('Trakt PKCE rejects forged callbacks and exchanges without a client secret', async () => {

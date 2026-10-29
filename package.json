@@ -1,6 +1,6 @@
 {
   "name": "cloudreel",
-  "version": "0.3.18",
+  "version": "0.3.20",
   "private": true,
   "license": "MIT",
   "description": "云映 — 百度网盘与 Trakt 的 Windows 影视客户端",
@@ -21,12 +21,15 @@
     "setup:desktop": "node scripts/setup-electron.mjs",
     "predist": "npm run setup:desktop",
     "dist": "npm run build && electron-builder --win portable --x64",
+    "dist:seedhub": "npm run build && electron-builder --win portable --x64 --config.directories.output=release/seedhub-test --config.productName=\"CloudReel SeedHub Test\" --config.appId=dev.cloudreel.seedhubtest --config.portable.artifactName=CloudReel-${version}-SeedHub-Test-win-x64.exe",
     "icons:build": "node scripts/build-icons.mjs",
     "prebuild": "npm run native:build && npm run icons:build",
     "configure:trakt": "node scripts/configure-trakt.mjs",
-    "verify:playback": "node scripts/verify-real-playback.mjs"
+    "verify:playback": "node scripts/verify-real-playback.mjs",
+    "verify:seedhub": "node scripts/verify-seedhub.mjs"
   },
   "dependencies": {
+    "jsqr": "1.4.0",
     "koffi": "3.3.3",
     "lucide-react": "^0.468.0",
     "react": "19.3.1",
@@ -90,5 +93,6 @@
   },
   "author": {
     "name": "CloudReel"
-  }
+  },
+  "cloudreelChannel": "seedhub-test"
 }

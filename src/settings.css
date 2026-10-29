@@ -38,10 +38,17 @@
 .settings-inline-message {margin:12px 26px;font-size:var(--type-small);}
 .settings-attribution {padding:0 26px;margin:12px 0;color:#858895;}
 .settings-page .about-row {margin-top:32px;}
+.watch-sync-details {padding:0 26px 22px;}
+.watch-sync-details>.section-note {margin:16px 0;font-size:var(--type-small);}
+.watch-sync-details .trakt-sync-status {padding:16px 0 0;}
+.watch-sync-details>.text-button {margin-top:18px;}
+.settings-disclosure:has(.watch-sync-settings) {scroll-margin-top:96px;}
+.desktop-chrome:not(.is-fullscreen) .settings-disclosure:has(.watch-sync-settings) {scroll-margin-top:134px;}
 @media(max-width:1100px) {
   .settings-save-status {display:none;}
   .settings-disclosure>summary {padding:20px;gap:12px;}
   .settings-section-status {display:none;}
   .settings-section-footer {padding:18px 20px;flex-wrap:wrap;}
   .settings-advanced-fields,.settings-credential-body {padding-left:20px;padding-right:20px;}
+  .watch-sync-details {padding-left:20px;padding-right:20px;}
 }

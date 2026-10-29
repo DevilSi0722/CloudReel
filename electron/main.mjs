@@ -20,19 +20,24 @@ import { createMetadataFetcher } from './services/desktop-network.mjs';
 import {ThumbnailService} from './services/thumbnails.mjs';
 import {MediaProbeService} from './services/media-probe.mjs';
 import {LibraryScanner} from './services/scanner.mjs';
+import {LibraryRefresh} from './services/library-refresh.mjs';
+import {DiscoveryService} from './services/discovery.mjs';
+import {DiscoveryBrowser} from './services/discovery-browser.mjs';
+import {BaiduShareService} from './services/baidu-share.mjs';
 import {validatePlayback} from './core/playback-preferences.mjs';
 import {versionKey} from './core/versions.mjs';
 import {forgetWatchIdentity} from './core/watch-state.mjs';
 
 const projectDirectory = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const applicationIcon = path.join(projectDirectory, 'assets', 'brand', 'app.ico');
-app.setName('CloudReel');
+const testChannel = JSON.parse(fs.readFileSync(path.join(projectDirectory,'package.json'),'utf8')).cloudreelChannel === 'seedhub-test';
+app.setName(testChannel ? 'CloudReel-SeedHub-Test' : 'CloudReel');
 // Grayscale text avoids ClearType colour fringes on translucent dark surfaces.
 app.commandLine.appendSwitch('disable-lcd-text');
-if (process.platform === 'win32') app.setAppUserModelId('dev.cloudreel.player');
+if (process.platform === 'win32') app.setAppUserModelId(testChannel ? 'dev.cloudreel.seedhubtest' : 'dev.cloudreel.player');
 protocol.registerSchemesAsPrivileged([{ scheme: 'cloudreel-art', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 if (process.env.CLOUDREEL_DATA_DIR) app.setPath('userData', path.resolve(process.env.CLOUDREEL_DATA_DIR));
-else app.setPath('userData', path.join(app.getPath('appData'), app.isPackaged ? 'CloudReel' : 'CloudReel-Dev'));
+else app.setPath('userData', path.join(app.getPath('appData'), testChannel ? 'CloudReel-SeedHub-Test' : app.isPackaged ? 'CloudReel' : 'CloudReel-Dev'));
 if (process.env.CLOUDREEL_DEBUG_PORT && !app.isPackaged) { app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1'); app.commandLine.appendSwitch('remote-debugging-port', process.env.CLOUDREEL_DEBUG_PORT); }
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
@@ -51,7 +56,7 @@ else {
     state.accounts.trakt.configured = trakt.configured();
     Object.assign(state.accounts.trakt, traktLogin.status());
     state.accounts.trakt.sync = sync.status();
-    return { ...state, collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
+    return { ...state, discoveryTransfers: transfers.status(), collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
   };
   let notifyTimer;
   const notify = () => {
@@ -62,6 +67,7 @@ else {
   const traktLogin = createTraktLogin(trakt, store, notify, () => window, applicationIcon, () => {sync.reset(); void sync.pull();});
   const baidu = {
     list: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).list(...args),
+    fileInfo: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).fileInfo(...args),
     streamUrl: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).streamUrl(...args),
     fetchMedia: (url, options) => usingWebBaidu() ? webLogin.service.fetchMedia(url, options) : fetch(url, options)
   };
@@ -88,18 +94,46 @@ else {
   const player = new PlayerService(store, baidu, trakt, sync, { resolveMpv, notify, videoHost, inputConfig: path.join(inputDirectory, 'player-keys.conf'), fullscreen: () => window?.isFullScreen() ?? false, toggleFullscreen, onAction: action => controls?.action(action) ?? false });
   const thumbnails = player.thumbnails = new ThumbnailService(app.getPath('userData'), player);
   const mediaProbe = new MediaProbeService(store,baidu,resolveMpv,notify);
-  const scanner = new LibraryScanner(store, baidu, notify, () => scrapeLater());
-  function scrapeLater(refresh = false) { if (store.data.settings.autoScrape) void metadata.run({ refresh }); }
-  function requireIdle() { if (player.session || player.opening || scanner.state.running || sync.flushing) throw new Error('请等待当前播放、扫描或同步操作结束，再修改账号及播放器设置。'); }
+  const scanner = new LibraryScanner(store, baidu, notify, current => scrapeLater(false, current.background));
+  const discovery = new DiscoveryService({createBrowser:() => new DiscoveryBrowser('https://sidhub.cc')});
+  const transfers = new BaiduShareService({store,web:webLogin.service,browserSession:webLogin.browserSession,createBrowser:() => new DiscoveryBrowser('https://pan.baidu.com',{browserSession:webLogin.browserSession}),notify,importDirectory:async target => {
+    // Resolve a renamed target before ingestion and limit the scan to it.
+    const info = target.fsId ? await baidu.fileInfo(target.fsId) : {path:target.path};
+    const count = await scanner.importBaiduDirectory(info.path);
+    if (target.mount && !scanner.roots().some(root => root.source === 'baidu' && root.enabled !== false && (info.path === root.path || info.path.startsWith(root.path.replace(/\/$/,'') + '/')))) scanner.add('baidu',info.path,target.fsId);
+    scrapeLater(false,true);notify();return count;
+  }});
+  const libraryRefresh = new LibraryRefresh(scanner, {baiduConnected: () => usingWebBaidu() ? webLogin.service.connected : Boolean(store.data.secrets.baiduToken), automatic: () => store.data.settings.autoRefresh !== false});
+  function scrapeLater(refresh = false, background = false) {
+    if(!store.data.settings.autoScrape || quitting) return;
+    void metadata.schedule({refresh, background});
+  }
+  function requireIdle() { if (player.session || player.opening || scanner.state.running || sync.flushing || transfers.busy) throw new Error('请等待当前播放、扫描、保存或同步操作结束，再修改账号及播放器设置。'); }
   function cancelAuth() { if (auth?.timer) clearTimeout(auth.timer); auth = null; }
   const externalOrigins = new Set(['https://pan.baidu.com', 'https://openapi.baidu.com', 'https://app.trakt.tv', 'https://trakt.tv', 'https://auth.trakt.tv', 'https://github.com', 'https://mpv.io', 'https://www.themoviedb.org', 'https://movie.douban.com', 'https://www.tvmaze.com']);
   async function openExternal(url) {
     const parsed = new URL(url); if (!externalOrigins.has(parsed.origin)) throw new Error('此链接不在应用支持的服务范围内。');
     await shell.openExternal(parsed.toString());
   }
+  function openProviderWindow(title,url,browserSession,origin) {
+    const view = new BrowserWindow({parent:window,width:1060,height:760,title,autoHideMenuBar:true,icon:applicationIcon,webPreferences:{session:browserSession,contextIsolation:true,nodeIntegration:false,sandbox:true,webviewTag:false}});
+    const allowed = value => {try {const target = new URL(value);return target.protocol === 'https:' && !target.username && !target.password && (target.origin === origin || origin === 'https://pan.baidu.com' && target.origin === 'https://passport.baidu.com');} catch {return false;}};
+    const restrict = (event,target) => {if(!allowed(target)) event.preventDefault();};
+    view.webContents.on('will-navigate',restrict);view.webContents.on('will-redirect',restrict);view.webContents.setWindowOpenHandler(() => ({action:'deny'}));
+    void view.loadURL(url).catch(() => {});
+  }
   const handlers = {
     'state': () => snapshot(),
-    'settings:save': input => { requireIdle(); cancelAuth(); webLogin.close(); traktLogin.close(); const previousTrakt = store.data.settings.traktClientId; store.saveSettings(input ?? {}); if (previousTrakt !== store.data.settings.traktClientId) sync.reset(); if (input?.tmdbToken?.trim()) void metadata.restart(); else if (input?.clearTmdbToken) {metadata.cancel(); metadata.clearCache();} else if (input?.autoScrape === false) metadata.cancel(); notify(); return snapshot(); },
+    'discovery:catalog': input => discovery.catalog(input),
+    'discovery:detail': id => discovery.detail(id),
+    'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '');},
+    'discovery:files': input => transfers.list(input),
+    'discovery:transfer': input => {if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input);},
+    'discovery:tasks': () => transfers.status(),
+    'discovery:check': id => transfers.check(id),
+    'discovery:verifySite': () => {const browser = discovery.browser();openProviderWindow('SeedHub 网站验证','https://sidhub.cc/',browser.session,'https://sidhub.cc');},
+    'discovery:openResource': async id => {const url = await discovery.resolve(id);openProviderWindow('百度网盘分享',url,webLogin.browserSession,'https://pan.baidu.com');},
+    'settings:save': input => { if(['baiduMode','baiduClientId','baiduSecret','traktClientId','traktRedirectUri','mpvPath'].some(key => input?.[key] !== undefined)) {requireIdle(); cancelAuth(); webLogin.close(); traktLogin.close();} const previousTrakt = store.data.settings.traktClientId; store.saveSettings(input ?? {}); if (previousTrakt !== store.data.settings.traktClientId) sync.reset(); if (input?.tmdbToken?.trim()) void metadata.restart(); else if (input?.clearTmdbToken) {metadata.cancel(); metadata.clearCache();} else if (input?.autoScrape === false) metadata.cancel(); notify(); return snapshot(); },
     'external:open': url => openExternal(url),
     'mpv:select': async () => {
       const result = await dialog.showOpenDialog(window, { title: '选择 mpv 播放器', properties: ['openFile'], filters: [{ name: 'mpv', extensions: ['exe'] }] });
@@ -134,6 +168,14 @@ else {
     'baidu:cancelAuth': () => cancelAuth(),
     'baidu:checkWeb': async () => { await webLogin.check(); return snapshot(); },
     'baidu:list': ({ directory, start = 0 }) => baidu.list(directory, Number(start)),
+    'baidu:folders': async ({directory, start = 0}) => {
+      const result = await baidu.list(directory, Number(start));
+      return {...result, files: result.files.filter(file => Number(file.isdir) === 1)};
+    },
+    'library:mountBaidu': async input => {
+      if (!(usingWebBaidu() ? webLogin.service.connected : store.data.secrets.baiduToken)) throw new Error('请先连接百度网盘。');
+      await scanner.mountBaidu(input);metadata.foreground(); notify(); return snapshot();
+    },
     'library:importBaidu': file => {
       if (!file || file.isdir || !isVideo(file.server_filename) || !/^\d+$/.test(String(file.fs_id))) throw new Error('请选择有效的视频文件。');
       const item = baiduItem(file); if (!store.data.items.some(old => old.id === item.id)) store.upsert([item]);
@@ -149,16 +191,16 @@ else {
       return snapshot();
     },
     'library:importFolder': async () => {
-      if (scanner.state.running) throw new Error('请先结束当前扫描。');
+      if (scanner.state.running && !scanner.state.background) throw new Error('请先结束当前扫描。');
       const selected = await dialog.showOpenDialog(window, {title:'选择本地影视目录',properties:['openDirectory']});
-      if (!selected.canceled) {const root=scanner.add('local',selected.filePaths[0]);scanner.refresh([root.id]);}
+      if (!selected.canceled) {const root=scanner.add('local',selected.filePaths[0]);scanner.refresh([root.id]);metadata.foreground();}
       return snapshot();
     },
     'library:scan': () => {
       if (!(usingWebBaidu() ? webLogin.service.connected : store.data.secrets.baiduToken)) throw new Error('请先连接百度网盘。');
       const root=scanner.add('baidu',store.data.settings.rootDir || '/');return scanner.refresh([root.id]);
     },
-    'library:refresh': input => {scanner.refresh(input?.ids);return snapshot();},
+    'library:refresh': input => {scanner.refresh(input?.ids);metadata.foreground();return snapshot();},
     'library:cancelScan': () => scanner.cancel(),
     'library:removeRoot': id => {
       if(scanner.state.running) throw new Error('请先停止扫描。');
@@ -291,7 +333,7 @@ else {
   app.on('second-instance', () => { if (window.isMinimized()) window.restore(); window.focus(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', event => {
-    if (quitting) return; event.preventDefault(); cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
+    if (quitting) return; event.preventDefault(); discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
     void player.stop().catch(() => {}).then(() => thumbnails.reset()).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
   });
   const retryTimer = setInterval(() => { void sync.flush(); }, 60000); retryTimer.unref();
@@ -299,10 +341,8 @@ else {
   window.on('focus', () => { if (!quitting && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });
   void sync.flush();
   void sync.pull();
-  const refreshLibrary = () => {if(!quitting && store.data.settings.autoRefresh && !scanner.state.running && scanner.roots().length) scanner.refresh();};
-  const refreshTimer = setInterval(refreshLibrary,15*60000);refreshTimer.unref();
-  if (usingWebBaidu()) void webLogin.restore().then(() => {if(webLogin.service.connected) refreshLibrary();}).catch(() => {});
-  else if(scanner.roots().some(root=>root.source==='local')) refreshLibrary();
-  scrapeLater();
+  libraryRefresh.start();
+  if (usingWebBaidu()) void webLogin.restore().then(() => libraryRefresh.startup()).catch(() => {});
+  scrapeLater(false, true);
   }).catch(error => { console.error('CloudReel startup failed:', error.message); dialog.showErrorBox('云映启动失败', error.message); app.exit(1); });
 }

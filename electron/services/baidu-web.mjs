@@ -1,4 +1,5 @@
 import { ApiError, jsonRequest, withQuery } from '../core/http.mjs';
+import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
 
 export const BAIDU_WEB_HOME = 'https://pan.baidu.com/disk/main';
 export function isBaiduPage(value) {
@@ -86,28 +87,36 @@ export class BaiduWebService {
     const files = data.list;
     return { files, hasMore: files.length === 200, nextStart: start + files.length };
   }
-  async streamUrl(fsId, { refresh = false, path } = {}) {
+  async fileInfo(fsId, {dlink = false} = {}) {
     if (!/^\d+$/.test(String(fsId))) throw new Error('无效的网盘文件 ID。');
+    const variables = await this.sessionVariables();
+    let data;
+    try {data = await this.request('/api/filemetas', {fsids: `[${fsId}]`, dlink: dlink ? 1 : 0, bdstoken: variables.bdstoken});}
+    catch (error) {
+      if ([12, -9, 31066].includes(Number(error.code))) throw new ApiError('百度网盘中的文件已删除或无法访问，请确认文件仍在当前账号中。', error.status, error.code);
+      throw error;
+    }
+    return baiduFileInfo(data.info, fsId);
+  }
+  async streamUrl(fsId, { refresh = false } = {}) {
     // A rejected link needs a fresh session check and signer even when the
     // ordinary five-minute variable cache is still warm.
     if (refresh && !await this.check()) throw new Error('请先在百度官方网页中登录账号。');
-    const variables = await this.sessionVariables();
-    const filePath = path ?? this.store.data.items?.find(item => item.source === 'baidu' && String(item.fsId) === String(fsId))?.path;
-    if (filePath !== undefined && (typeof filePath !== 'string' || !filePath.startsWith('/') || filePath.includes('\0'))) throw new Error('无效的网盘文件路径。');
-    if (filePath) {
-      // The website download endpoint can return already-expired tickets for
-      // otherwise readable files. File metadata supplies a fresh original-file
-      // link, with no transcode or HDR loss. Its CDN requires Baidu's download
-      // user agent; a browser UA yields 31326 / hitcode 119.
-      const data = await this.request('/api/filemetas', {target: JSON.stringify([filePath]), dlink: 1, bdstoken: variables.bdstoken});
-      const info = data.info?.[0];
-      if (info && ((info.fs_id !== undefined && String(info.fs_id) !== String(fsId)) || (info.path !== undefined && info.path !== filePath) || Number(info.isdir) === 1)) throw new Error('百度返回的文件信息与所选影片不一致，请重新扫描该目录。');
-      if (info?.dlink) return this.rememberMediaLink(info.dlink, 'pan.baidu.com');
+    // fsids survives both rename and move. Never use a stale path, which can
+    // point at another file after the original name is reused.
+    const info = await this.fileInfo(fsId, {dlink: true});
+    if (Number(info.isdir) === 1) throw new Error('所选网盘文件是文件夹，无法播放。');
+    // Fresh original bytes retain HDR; metadata links require this CDN identity.
+    if (info.dlink) {
+      const link = this.rememberMediaLink(info.dlink, 'pan.baidu.com');
+      rememberBaiduFile(this.store, info, this.notify); return link;
     }
+    const variables = await this.sessionVariables();
     const values = await this.template(['sign1', 'sign3', 'timestamp']);
     if (!Number.isFinite(Number(values.timestamp)) || Number(values.timestamp) <= 0) throw new Error('百度网页下载参数不可用，请在官方网页确认该文件能正常下载。');
     const data = await this.request('/api/download', { type: 'dlink', fidlist: `[${fsId}]`, sign: webDownloadSign(values.sign3, values.sign1), timestamp: values.timestamp, bdstoken: variables.bdstoken });
-    return this.rememberMediaLink(data.dlink?.[0]?.dlink, null);
+    const link = this.rememberMediaLink(data.dlink?.[0]?.dlink, null);
+    rememberBaiduFile(this.store, info, this.notify); return link;
   }
   rememberMediaLink(link, userAgent) {
     let url; try { url = new URL(link); } catch { throw new Error('百度网页未返回原文件地址，可能需要在网页中完成安全验证。'); }

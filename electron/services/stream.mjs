@@ -19,7 +19,7 @@ async function mediaRejection(upstream) {
     } catch { /* A proxy may return HTML, or cancellation may close the body. */ }
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
-  const hints = {31360: '百度返回的原文件地址已过期', 31326: '百度拒绝了下载请求的客户端身份或授权', 31329: '百度限制了此下载方式', 31045: '百度媒体端没有接受当前登录身份'};
+  const hints = {31360: '百度返回的原文件地址已过期', 31362: '百度未接受原文件地址的下载签名', 31326: '百度拒绝了下载请求的客户端身份或授权', 31329: '百度限制了此下载方式', 31045: '百度媒体端没有接受当前登录身份'};
   return new Error(`媒体服务器拒绝访问（HTTP ${upstream.status}${code !== undefined ? `，百度错误 ${code}` : ''}），${hints[code] ?? '百度未允许读取此原文件'}。已重新获取地址；请在官方网页确认文件可下载。`);
 }
 

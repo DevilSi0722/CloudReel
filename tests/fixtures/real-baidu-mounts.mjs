@@ -55,4 +55,8 @@ app.whenReady().then(async()=>{
   assert.equal(listings,countBeforePlayback);assert.equal(BrowserWindow.getAllWindows().some(view=>view.isVisible()),false);
   console.log('REAL_PLAYBACK_RESULT '+JSON.stringify({mountScope:true,folderRename:true,playbackWithoutRescan:true,originalProfileWrites:0,visibleWindowsOpened:0,sources:results}));
   host.destroy();window.destroy();app.quit();
-}).catch(async error=>{console.log('REAL_PLAYBACK_RESULT '+JSON.stringify({passed:false,stage,errorType:error.name}));await player?.stop().catch(()=>{});host?.destroy();window?.destroy();app.exit(1);});
+}).catch(async error=>{
+  const message=String(error.message),rejection=/媒体服务器拒绝/.test(message)?{http:Number(message.match(/HTTP (\d+)/)?.[1]),code:Number(message.match(/百度错误 (\d+)/)?.[1])||undefined}:undefined;
+  console.log('REAL_PLAYBACK_RESULT '+JSON.stringify({passed:false,stage,errorType:error.name,mediaRejection:rejection,identityMismatch:/信息与所选文件 ID 不一致/.test(message)}));
+  await player?.stop().catch(()=>{});host?.destroy();window?.destroy();app.exit(1);
+});

@@ -96,11 +96,12 @@ else {
   const mediaProbe = new MediaProbeService(store,baidu,resolveMpv,notify);
   const scanner = new LibraryScanner(store, baidu, notify, current => scrapeLater(false, current.background));
   const discovery = new DiscoveryService({createBrowser:() => new DiscoveryBrowser('https://sidhub.cc')});
-  const transfers = new BaiduShareService({store,web:webLogin.service,browserSession:webLogin.browserSession,createBrowser:() => new DiscoveryBrowser('https://pan.baidu.com',{browserSession:webLogin.browserSession}),notify,importDirectory:async target => {
+  const transfers = new BaiduShareService({store,web:webLogin.service,browserSession:webLogin.browserSession,prepareWork:work=>metadata.discoveryWork(work),createBrowser:() => new DiscoveryBrowser('https://pan.baidu.com',{browserSession:webLogin.browserSession}),notify,importDirectory:async target => {
     // Resolve a renamed target before ingestion and limit the scan to it.
     const info = target.fsId ? await baidu.fileInfo(target.fsId) : {path:target.path};
-    const count = await scanner.importBaiduDirectory(info.path);
-    if (target.mount && !scanner.roots().some(root => root.source === 'baidu' && root.enabled !== false && (info.path === root.path || info.path.startsWith(root.path.replace(/\/$/,'') + '/')))) scanner.add('baidu',info.path,target.fsId);
+    const count = await scanner.importBaiduDirectory(info.path,{identities:target.identities,selection:target.selection});
+    const mountInfo=target.mountFsId?await baidu.fileInfo(target.mountFsId):info;
+    if (target.mount && !scanner.roots().some(root => root.source === 'baidu' && root.enabled !== false && (mountInfo.path === root.path || mountInfo.path.startsWith(root.path.replace(/\/$/,'') + '/')))) scanner.add('baidu',mountInfo.path,target.mountFsId||target.fsId);
     scrapeLater(false,true);notify();return count;
   }});
   const libraryRefresh = new LibraryRefresh(scanner, {baiduConnected: () => usingWebBaidu() ? webLogin.service.connected : Boolean(store.data.secrets.baiduToken), automatic: () => store.data.settings.autoRefresh !== false});
@@ -126,8 +127,9 @@ else {
     'state': () => snapshot(),
     'discovery:catalog': input => discovery.catalog(input),
     'discovery:detail': id => discovery.detail(id),
-    'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '');},
+    'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '',discovery.work(input?.id));},
     'discovery:files': input => transfers.list(input),
+    'discovery:naming': input => transfers.naming(input),
     'discovery:transfer': input => {if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input);},
     'discovery:tasks': () => transfers.status(),
     'discovery:check': id => transfers.check(id),

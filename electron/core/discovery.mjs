@@ -1,5 +1,6 @@
 // Provider data stays separate from the user's library and playback identity.
 export const SEEDHUB_ORIGIN = 'https://sidhub.cc';
+import {discoveryWork} from './discovery-naming.mjs';
 
 export class DiscoveryError extends Error {
   constructor(code, message) { super(message); this.name = 'DiscoveryError'; this.code = code; }
@@ -96,7 +97,7 @@ export function detailFromSnapshot(snapshot) {
     else if (resources.get(id).provider === 'unknown' && provider !== 'unknown') resources.get(id).provider = provider;
   }
   let poster = null; try {const url = new URL(snapshot.poster); if (url.protocol === 'https:') poster = url.href;} catch {}
-  return {title: label(snapshot.heading || snapshot.title).replace(/^#\s*/, ''), overview: label(snapshot.overview).slice(0,3000), poster, resources: [...resources.values()]};
+  return {title: label(snapshot.heading || snapshot.title).replace(/^#\s*/, ''), overview: label(snapshot.overview).slice(0,3000), poster, work:discoveryWork(snapshot), resources: [...resources.values()]};
 }
 
 export function resourcesFromSnapshot(snapshot) {

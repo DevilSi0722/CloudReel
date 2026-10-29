@@ -25,7 +25,8 @@ app.whenReady().then(async()=>{
       value={movies:Array.from({length:payload.query?2:20},(_,index)=>({id:String(start+index),title:payload.query?payload.query+' '+(index+1):liveCatalog?.movies[index]?.title||'影视作品 '+(start+index),poster:liveCatalog?.movies[index]?.poster||null})),next:!payload.query&&payload.page<3?'next':null};
     }
     if(method==='discovery:detail') value={title:'硅谷 第四季',overview:'理想与现实之间，总有新的故事。选择版本后，将影片保存到自己的云端影院。',poster:null,resources:[...Array.from({length:14},(_,index)=>({id:'r'+index,title:'硅谷 第四季 · 1080P · 中英字幕 · 资源 '+(index+1),provider:'baidu'})),{id:'quark1',title:'夸克版本 1',provider:'quark'},{id:'quark2',title:'夸克版本 2',provider:'quark'},{id:'xunlei1',title:'迅雷版本',provider:'xunlei'},{id:'unknown1',title:'未标注版本',provider:'unknown'}]};
-    if(method==='discovery:preview') value={handle:'preview',directory:'/',page:1,hasMore:false,files:[{fs_id:'100',server_filename:'硅谷 第四季',path:'/Silicon.Valley',isdir:1,size:0}]};
+    if(method==='discovery:preview') value={handle:'preview',work:{title:'硅谷',kind:'episode',season:4,year:2014},directory:'/',page:1,hasMore:false,files:[{fs_id:'100',server_filename:'硅谷 第四季',path:'/Silicon.Valley',isdir:1,size:0}]};
+    if(method==='discovery:naming'){await wait(100);value={total:1,renamed:1,skipped:0,files:[{original:'Silicon.Valley.S04E03.mkv',name:'硅谷 - S04E03.mkv',reason:''}]};}
     if(method==='discovery:files') value={directory:'/Silicon.Valley',page:1,hasMore:false,files:[{fs_id:'101',server_filename:'Silicon.Valley.S04E03.mkv',path:'/Silicon.Valley/Silicon.Valley.S04E03.mkv',isdir:0,size:1024**3}]};
     if(method==='baidu:folders') value={files:[{fs_id:'300',server_filename:'电影',path:'/Movies',isdir:1,size:0}],hasMore:false,nextStart:1};
     if(method==='discovery:transfer') {state.discoveryTransfers=[{id:'job',status:'submitted',title:'硅谷 第四季',target:'/Movies',message:'百度正在保存文件',at:new Date().toISOString(),count:0,canCheck:true}];window.webContents.send('cloudreel:state',state);value=state.discoveryTransfers[0];}
@@ -71,12 +72,16 @@ app.whenReady().then(async()=>{
   assert.equal(await js("document.querySelector('.folder-picker-footer button').disabled"),true,'root cannot trigger a whole-account ingestion');
   assert.equal(await js("document.querySelectorAll('[role=dialog]').length"),1,'destination picker has one focus trap');
   await js("document.querySelector('.folder-choice').click()");await until(()=>js("document.querySelector('.folder-picker-selection p')?.textContent==='/Movies'"));await until(()=>js("!document.querySelector('.folder-picker-footer button').disabled"));await click('保存到此文件夹');
-  await until(()=>js("Boolean(document.querySelector('.share-save-footer'))"));assert.equal(calls.some(call=>call.method==='library:mountBaidu'),false);
+  await until(()=>js("Boolean(document.querySelector('.share-save-footer'))"));await until(()=>js("Boolean(document.querySelector('.share-naming details'))"));assert.equal(calls.some(call=>call.method==='library:mountBaidu'),false);
+  assert.equal(await js("document.querySelector('.share-naming input[type=checkbox]').checked"),true);
+  assert.equal(await js("document.querySelector('[aria-label=\"保存剧集季数\"]').value"),'4');
+  await js("document.querySelector('.share-naming summary').click()");assert.equal(await js("document.querySelector('.share-naming-preview span').textContent"),'硅谷 - S04E03.mkv');
+  await capture('discovery-naming.png');await js("document.querySelector('.share-naming summary').click()");
   assert.equal(await js("document.querySelector('.share-destination p').textContent"),'/Movies');assert.equal(await js("document.querySelector('.share-save-footer .primary').disabled"),false);await capture('discovery-save.png');
   window.setSize(980,720);await wait(100);
   const bounds=await js("(()=>{const r=document.querySelector('.share-save-footer .primary').getBoundingClientRect();return {inside:r.bottom<=innerHeight&&r.right<=innerWidth&&r.left>=0};})()");assert.equal(bounds.inside,true);
   await click('保存并加入片库');await until(()=>js("Boolean(document.querySelector('.discovery-submitted'))"));
-  const writes=calls.filter(call=>call.method==='discovery:transfer');assert.equal(writes.length,1);assert.deepEqual(writes[0].payload,{handle:'preview',fsIds:['101'],target:{path:'/Movies',fsId:'300'},mount:true});
+  const writes=calls.filter(call=>call.method==='discovery:transfer');assert.equal(writes.length,1);assert.deepEqual(writes[0].payload,{handle:'preview',fsIds:['101'],target:{path:'/Movies',fsId:'300'},mount:true,autoRename:true,season:4});
   await click('继续浏览');await until(()=>js("!document.querySelector('[role=dialog]')"));assert.equal(await js("document.querySelector('.discovery-task p').textContent"),'百度正在保存文件');
   assert.equal(BrowserWindow.getAllWindows().some(view=>view.isVisible()),false);
   console.log(JSON.stringify({nativeDiscovery:true,recentPopular:true,infiniteScroll:true,paginationRetry:true,providerFilters:true,staleSearchIgnored:true,progressiveResources:true,singleEpisodeSelection:true,destinationWithoutMount:true,transferSubmittedOnce:true,responsiveSave:true,visibleWindows:0}));provider?.close();window.destroy();app.quit();

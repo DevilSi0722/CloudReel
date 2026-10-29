@@ -10,6 +10,8 @@ export function pageSnapshot() {
   return {
     url: location.href, title: document.title,
     heading: clean(document.querySelector('h1')?.textContent),
+    workTitle: clean([...document.querySelectorAll('h2')].find(node => /的简介$/.test(clean(node.textContent)))?.textContent).replace(/^#\s*|的简介$/g,'').trim(),
+    facts: clean(document.querySelector('h1')?.parentElement?.textContent).split(/的简介/)[0].slice(0,6000),
     overview: clean([...document.querySelectorAll('h2')].find(node => node.textContent.includes('简介'))?.nextElementSibling?.textContent),
     poster: document.querySelector('img[alt*="海报"]')?.src,
     text: clean(document.body?.innerText).slice(0, 150000),

@@ -43,5 +43,7 @@ declare global { interface Window { cloudreel?: Bridge } }
 export type DiscoveryMovie = {id:string;url:string;title:string;poster:string|null};
 export type DiscoveryProvider = 'baidu' | 'quark' | 'xunlei' | 'alipan' | 'unknown';
 export type DiscoveryDetail = {title:string;overview:string;poster:string|null;resources:{id:string;title:string;provider:DiscoveryProvider}[]};
-export type SharePreview = {handle:string;files:CloudFile[];directory:string;page:number;hasMore:boolean};
+export type DiscoveryWork = {title:string;originalTitle?:string;kind:'movie'|'episode';year?:number;season?:number;selection?:{source:'tmdb';id:string;kind:'movie'|'episode'}};
+export type NamingPreview = {total:number;renamed:number;skipped:number;files:{original:string;name:string;reason:string}[]};
+export type SharePreview = {handle:string;files:CloudFile[];directory:string;page:number;hasMore:boolean;work?:DiscoveryWork};
 export type TransferTask = {id:string;title:string;status:string;message:string;target:string;count:number;at:string;canCheck:boolean};

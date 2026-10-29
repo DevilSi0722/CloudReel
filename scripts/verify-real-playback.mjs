@@ -22,7 +22,7 @@ try {
   await fs.copyFile(path.join(sessionSource,'Local State'),path.join(directory,'Local State'));
   await fs.cp(path.join(sessionSource,partition,'Network'),path.join(directory,partition,'Network'),{recursive:true});
   const code=await new Promise((resolve,reject)=>{
-    const child=spawn(createRequire(import.meta.url)('electron'),[path.join(root,'tests/fixtures',fixture)],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,CLOUDREEL_TEST_DIRECTORY:directory,CLOUDREEL_SOURCE_PROFILE:source,CLOUDREEL_PACKAGE_ROOT:packageRoot,CLOUDREEL_DISCOVERY_REUSE:process.argv.includes('--reuse')?'1':''}});
+    const child=spawn(createRequire(import.meta.url)('electron'),[path.join(root,'tests/fixtures',fixture)],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,CLOUDREEL_TEST_DIRECTORY:directory,CLOUDREEL_SOURCE_PROFILE:source,CLOUDREEL_PACKAGE_ROOT:packageRoot,CLOUDREEL_DISCOVERY_REUSE:process.argv.includes('--reuse')?'1':'',CLOUDREEL_DISCOVERY_NAMING:process.argv.includes('--naming')?'1':''}});
     // The fixture emits only its deliberately sanitized summary. Never echo
     // Chromium diagnostics, request data, cookies, or provider error payloads.
     child.stdout.on('data',chunk=>{for(const line of chunk.toString().split('\n')) if(line.startsWith('REAL_PLAYBACK_RESULT ')) process.stdout.write(line+'\n');});

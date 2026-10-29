@@ -3,10 +3,10 @@ import {ArrowLeft, Check, ChevronRight, Cloud, Compass, Download, ExternalLink, 
 import {bridge} from './bridge';
 import {Empty, Modal, type Run} from './ui';
 import {BaiduFolderPicker} from './Sources';
-import type {AppState, CloudFile, DiscoveryDetail, DiscoveryMovie, DiscoveryProvider, SharePreview, TransferTask} from './types';
+import type {AppState, CloudFile, DiscoveryDetail, DiscoveryMovie, DiscoveryProvider, NamingPreview, SharePreview, TransferTask} from './types';
 
 const size = (bytes:number) => bytes > 1024**3 ? (bytes/1024**3).toFixed(1)+' GB' : bytes > 1024**2 ? (bytes/1024**2).toFixed(0)+' MB' : bytes ? Math.ceil(bytes/1024)+' KB' : '';
-const working = (status:string) => ['submitting','submitted','importing'].includes(status);
+const working = (status:string) => ['submitting','submitted','renaming','importing'].includes(status);
 const providerNames:Record<DiscoveryProvider,string> = {baidu:'百度网盘',quark:'夸克网盘',xunlei:'迅雷云盘',alipan:'阿里云盘',unknown:'来源待识别'};
 
 function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;title:string};state:AppState;run:Run;connect:()=>void;onClose:()=>void}) {
@@ -15,6 +15,15 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
   const first = state.scanRoots?.find(root => root.source === 'baidu' && root.enabled !== false && root.fsId && root.path !== '/');
   const [target,setTarget] = useState<{path:string;fsId?:string}|null>(first ? {path:first.path,fsId:first.fsId} : null), [mount,setMount] = useState(true);
   const generation = useRef(0);
+  const [autoRename,setAutoRename]=useState(true),[season,setSeason]=useState<number|undefined>(),[naming,setNaming]=useState<NamingPreview|null>(null),[namingLoading,setNamingLoading]=useState(false),[namingError,setNamingError]=useState('');
+  useEffect(()=>{setSeason(preview?.work?.kind==='episode'?preview.work.season??1:undefined);},[preview?.handle]);
+  useEffect(()=>{
+    setNaming(null);setNamingError('');
+    if(!preview?.work?.title||!autoRename||!selected.length){setNamingLoading(false);return;}
+    let cancelled=false;setNamingLoading(true);
+    const timer=setTimeout(()=>{void bridge.invoke<NamingPreview>('discovery:naming',{handle:preview.handle,fsIds:selected,season}).then(value=>{if(!cancelled)setNaming(value);}).catch(reason=>{if(!cancelled)setNamingError(reason.message);}).finally(()=>{if(!cancelled)setNamingLoading(false);});},160);
+    return ()=>{cancelled=true;clearTimeout(timer);};
+  },[preview?.handle,preview?.work?.title,selected,autoRename,season]);
   useEffect(() => {
     const current = ++generation.current;setLoading(true);setError('');setPreview(null);setSelected([]);setTrail([]);
     void bridge.invoke<SharePreview>('discovery:preview',resource).then(result => {if(current === generation.current) setPreview(result);}).catch(reason => {if(current === generation.current) setError(reason.message);}).finally(() => {if(current === generation.current) setLoading(false);});
@@ -25,7 +34,7 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
     try {
       const result = await bridge.invoke<Omit<SharePreview,'handle'>>('discovery:files',{handle:preview.handle,directory,page:append ? preview.page+1 : 1});
       if(current === generation.current) {
-        setPreview({...result,handle:preview.handle,files:append ? [...new Map([...preview.files,...result.files].map(file => [String(file.fs_id),file])).values()] : result.files});
+        setPreview({...preview,...result,files:append ? [...new Map([...preview.files,...result.files].map(file => [String(file.fs_id),file])).values()] : result.files});
         if(nextTrail) setTrail(nextTrail);
         if(openedId) setSelected(old => old.filter(value => value !== openedId));
       }
@@ -34,8 +43,8 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
   };
   const toggle = (file:CloudFile) => setSelected(old => old.includes(String(file.fs_id)) ? old.filter(value => value !== String(file.fs_id)) : [...old,String(file.fs_id)]);
   const save = async () => {
-    if (!preview || !target || sending) return;setSending(true);setError('');
-    try {setSaved(await bridge.invoke<TransferTask>('discovery:transfer',{handle:preview.handle,fsIds:selected,target,mount}));}
+    if (!preview || !target || sending || autoRename&&preview.work?.title&&(!naming||namingLoading)) return;setSending(true);setError('');
+    try {setSaved(await bridge.invoke<TransferTask>('discovery:transfer',{handle:preview.handle,fsIds:selected,target,mount,autoRename:!!preview.work?.title&&autoRename,season}));}
     catch(reason) {setError((reason as Error).message);}
     finally {setSending(false);}
   };
@@ -53,8 +62,13 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
       </div>
       {error && <div className="inline-error" role="alert"><Info size={17}/><span>{error}</span><button className="text-button" disabled={loading || sending} onClick={() => setRevision(value => value+1)}>重新读取</button></div>}
       <div className="share-destination"><FolderOpen size={22}/><div><strong>保存位置</strong><p>{target?.path || '选择你的影视文件夹'}</p></div><button className="button secondary" disabled={!state.accounts.baidu.connected || sending} onClick={() => setPicking(true)}>选择文件夹</button></div>
+      {preview?.work?.title&&<section className="share-naming"><label className="discovery-mount"><input type="checkbox" checked={autoRename} disabled={sending} onChange={event=>setAutoRename(event.target.checked)}/>自动规范命名，便于匹配影片资料</label>{autoRename&&<>
+        <p>{preview.work.title}{preview.work.kind==='movie'&&preview.work.year?` (${preview.work.year})`:''} · {preview.work.selection?'已匹配影片资料':'使用作品名称'}<span>保存到独立作品文件夹，无法确认的文件保留原名。</span></p>
+        {preview.work.kind==='episode'&&<label className="share-season">无季数标记的文件归入<input aria-label="保存剧集季数" type="number" min={0} max={99} value={season??1} disabled={sending} onChange={event=>setSeason(Math.min(99,Math.max(0,Number(event.target.value))))}/>季</label>}
+        {namingLoading?<p role="status">正在生成命名预览…</p>:namingError?<p role="alert">{namingError} 可取消自动命名后保留原名保存。</p>:naming&&<details><summary>命名预览 · {naming.renamed} 项调整{naming.skipped?`，${naming.skipped} 项保留原名`:''}</summary><div className="share-naming-preview">{naming.files.slice(0,8).map((file,index)=><div key={index}><del>{file.original}</del><span>{file.reason||file.name}</span></div>)}{naming.total>8&&<p>其余 {naming.total-8} 项按相同规则处理</p>}</div></details>}
+      </>}</section>}
       <label className="discovery-mount"><input type="checkbox" checked={mount} onChange={event => setMount(event.target.checked)} disabled={sending}/>持续挂载此目录，之后自动发现新影片</label>
-      <div className="share-save-footer"><span>{selected.length ? `已选 ${selected.length} 项 · 重名文件保留副本` : '选择想保存的文件或文件夹'}</span>{state.accounts.baidu.connected ? <button className="button primary" disabled={!preview || !target || !selected.length || sending || (state.discoveryTransfers || []).some(task => working(task.status))} onClick={() => void save()}>{sending ? <LoaderCircle size={16} className="spin"/> : <Download size={16}/>}保存并加入片库</button> : <button className="button primary" onClick={connect}><Cloud size={16}/>先登录百度网盘</button>}</div>
+      <div className="share-save-footer"><span>{selected.length ? `已选 ${selected.length} 项 · 重名文件保留副本` : '选择想保存的文件或文件夹'}</span>{state.accounts.baidu.connected ? <button className="button primary" disabled={!preview || !target || !selected.length || sending || !!(autoRename&&preview.work?.title&&(namingLoading||!naming)) || (state.discoveryTransfers || []).some(task => working(task.status))} onClick={() => void save()}>{sending ? <LoaderCircle size={16} className="spin"/> : <Download size={16}/>}保存并加入片库</button> : <button className="button primary" onClick={connect}><Cloud size={16}/>先登录百度网盘</button>}</div>
       <button className="text-button discovery-official" onClick={() => void run('discovery:openResource',resource.id)}><ExternalLink size={14}/>在百度官方页面查看或验证</button>
     </>}
   </Modal>;

@@ -103,6 +103,16 @@ export class MetadataService {
     if (prefix !== query && prefix.length >= 4) names.push(prefix);
     return [...new Set(names)];
   }
+  async discoveryWork(work) {
+    if(!this.configured()||!work?.title)return work;
+    try {
+      const results=await this.search(work.title,work.kind,'tmdb',{signal:AbortSignal.timeout(8000)});
+      const ranked=results.filter(value=>value.kind===work.kind&&value.voteCount!==0).map(value=>({...value,score:matchScore({...work,searchTitles:[work.originalTitle].filter(Boolean)},value)})).sort((a,b)=>b.score-a.score);
+      const first=ranked[0];
+      if(first?.score>=.9&&(!ranked[1]||first.score-ranked[1].score>=.05))return {...work,title:work.kind==='episode'?baseSeriesTitle(first.title):first.title,originalTitle:first.originalTitle,year:first.year??work.year,selection:{source:'tmdb',id:first.id,kind:work.kind}};
+    }catch{/* Naming stays available when metadata is unavailable or ambiguous. */}
+    return work;
+  }
   async search(query, kind = 'movie', source = 'auto', {signal} = {}) {
     signal?.throwIfAborted();
     if (typeof query !== 'string' || !query.trim() || query.length > 160) throw new Error('请输入有效片名。');

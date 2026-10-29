@@ -15,11 +15,13 @@ const {Store}=await load('core/store.mjs');
 const {PlayerService,discoverMpv}=await load('services/player.mjs');
 const {NativeVideoHost}=await load('services/native-video.mjs');
 const {isVideo}=await load('core/media.mjs');
+const {namingPlan}=await load('core/discovery-naming.mjs');
+const {organizeSavedCopies}=await load('services/discovery-organizer.mjs');
 const resources=process.env.CLOUDREEL_PACKAGE_ROOT ? path.dirname(root) : process.resourcesPath;
 const TARGET='/CloudReel-SeedHub-Test';
 app.setName('CloudReel-Discovery-Acceptance');app.setPath('userData',process.env.CLOUDREEL_TEST_DIRECTORY);
 app.on('window-all-closed',()=>{});
-let stage='startup',window,host,player,discovery,shares,login;
+let stage='startup',window,host,player,discovery,shares,login,restoreName;
 const summary={originalProfileWrites:0,traktWrites:0,remoteWriteScope:TARGET};
 const progress=value=>console.log('REAL_PLAYBACK_RESULT '+JSON.stringify({progress:value}));
 const until=async(check,timeout=160000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await new Promise(resolve=>setTimeout(resolve,250));}throw new Error('timeout');};
@@ -85,6 +87,24 @@ app.whenReady().then(async()=>{
     if(result.status!=='complete')throw new Error('transfer not confirmed');
   }
   const item=store.data.items.find(value=>existing ? String(value.fsId)===String(existing.fs_id) : !beforeIds.has(String(value.fsId)));if(!item)throw new Error('ingestion unavailable');
+  if(process.env.CLOUDREEL_DISCOVERY_NAMING) {
+    stage='rename production API';
+    const original=await login.service.fileInfo(item.fsId);
+    if(!original.path.startsWith(TARGET+'/')||Number(original.isdir))throw new Error('rename scope');
+    const alias='CloudReel-Naming-Check-'+Date.now()+path.posix.extname(original.server_filename);
+    restoreName=async()=>{const current=await login.service.fileInfo(original.fs_id);if(current.path.startsWith(TARGET+'/')&&current.server_filename!==original.server_filename)await login.service.renameFile(current,original.server_filename);};
+    const temporary=await login.service.renameFile(original,alias);
+    const source={...original,fs_id:'900',isdir:0,path:'/share/'+original.server_filename};
+    const work={title:item.title,kind:item.kind,year:item.year,season:item.season};
+    const plan=namingPlan([source],work);
+    if(plan.length!==1||plan[0].reason){progress({namingPlan:{kind:work.kind,season:work.season,reason:plan[0]?.reason,extension:path.posix.extname(original.server_filename),explicitEpisode:/S\d+E\d+/i.test(original.server_filename),collection:/合集|collection/i.test(original.server_filename)}});throw new Error('unrecognized test file');}
+    const job={target:TARGET,targetFsId:String(destination.fs_id),copyReceipt:[{fsId:String(temporary.fs_id),sourceId:'900'}],naming:{beforeIds:before.files.filter(value=>String(value.fs_id)!==String(original.fs_id)).map(value=>String(value.fs_id)),roots:[source],plan,results:[]}};
+    const result=await organizeSavedCopies(job,login.service,async()=>{if(!login.service.connected)throw Error('session');});
+    if(result.counts.renamed!==1||result.identities.length!==1)throw Error('normalization failed');
+    await scanner.importBaiduDirectory(TARGET,{identities:result.identities});
+    if(store.data.items.find(value=>value.id===item.id)?.title!==work.title)throw Error('identity not retained');
+    summary.naming={productionRename:true,normalized:result.counts.renamed,identityRetained:true};progress({namingVerified:true});
+  }
   stage='playback';host=new NativeVideoHost(()=>window,()=>1);host.layout({x:0,y:0,width:1280,height:800});
   player=new PlayerService(store,login.service,{}, {eligible:()=>false,start:async()=>{},checkpoint:async()=>{}},{resolveMpv:()=>discoverMpv('',resources,root),videoHost:host,inputConfig:path.join(process.env.CLOUDREEL_PACKAGE_ROOT?path.join(resources,'player'):path.join(root,'electron'),'player-keys.conf'),spawnPlayer:(binary,args,options)=>{const quiet=[...args];quiet.splice(quiet.indexOf('--'),0,'--mute=yes');return spawn(binary,quiet,options);}});
   stage='playback preparation';await player.play(item.id,true);progress({prepared:true});
@@ -96,12 +116,14 @@ app.whenReady().then(async()=>{
   summary.passed=false;summary.stage=stage;summary.errorType=error.name;
   // Emit only allowlisted diagnostics, never upstream payloads or media URLs.
   const message=String(error.message);
+  if(/媒体服务器拒绝/.test(message))summary.mediaRejection={http:Number(message.match(/HTTP (\d+)/)?.[1]),code:Number(message.match(/百度错误 (\d+)/)?.[1])||undefined};
   summary.reason=message==='timeout'?'timeout':/媒体服务器拒绝/.test(message)?'media-rejected':/媒体连接失败|原文件暂时无法读取/.test(message)?'media-connection':/文件信息与所选文件 ID/.test(message)?'file-identity-mismatch':/文件已删除|无法访问/.test(message)?'file-inaccessible':/会话|登录/.test(message)?'session':/mpv|播放器/.test(message)?'player':/视频画面/.test(message)?'native-host':'other';
   if(Number.isFinite(error.code))summary.errorCode=error.code;
   summary.frame=String(error.stack).split('\n').slice(1,3).map(line=>line.replace(/file:\/\/\//g,'').replace(/D:.*?(?=\/electron\/|\/tests\/)/g,'workspace'));
   if(player){const status=player.status();summary.player={present:Boolean(status),position:status?.position,duration:status?.duration,buffering:status?.buffering,video:Boolean(player.session?.videoParams),target:Boolean(player.session?.videoTarget),loadError:Boolean(status?.loadError),seekError:Boolean(status?.seek?.error)};}
 }).finally(async()=>{
   await player?.stop().catch(()=>{});shares?.close();discovery?.close();host?.destroy();
+  if(restoreName){try{await restoreName();summary.testFilenameRestored=true;}catch{summary.testFilenameRestored=false;summary.passed=false;}}
   summary.visibleWindows=BrowserWindow.getAllWindows().filter(view=>view.isVisible()).length;window?.destroy();
   await new Promise(resolve=>process.stdout.write('REAL_PLAYBACK_RESULT '+JSON.stringify(summary)+'\n',resolve));app.exit(summary.passed?0:1);
 });

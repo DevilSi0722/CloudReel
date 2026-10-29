@@ -27,7 +27,7 @@ export class LibraryScanner {
     const root = this.add('baidu',directory,fsId);this.refresh([root.id]);return root;
   }
   cancel() {if(this.state.running) this.state.cancelled = true; this.notify();}
-  async importBaiduDirectory(directory) {
+  async importBaiduDirectory(directory,{identities=[],selection}={}) {
     // Additions only: never mark old files unavailable or restart a refresh.
     if (typeof directory !== 'string' || !directory.startsWith('/') || directory.includes('\0')) throw new Error('无效的保存目录。');
     const queue = [directory], seen = new Set(), found = new Map();
@@ -49,7 +49,20 @@ export class LibraryScanner {
     }
     const existing = new Set(this.store.data.items.map(item => item.id));
     const added = [...found.values()].map(baiduItem).filter(item => !existing.has(item.id));
-    this.store.upsert(added); identifyLibrary(this.store.data.items);this.store.persist();this.notify();
+    this.store.upsert(added);
+    for(const identity of identities) {
+      const item=this.store.data.items.find(value=>value.id==='baidu:'+identity.fsId);
+      if(!item||!found.has(String(identity.fsId))||item.identificationLocked||item.metadataLocked||item.progress)continue;
+      const {title,kind,year,season,episode}=identity;
+      if(!title||!['movie','episode'].includes(kind)||kind==='episode'&&(!Number.isInteger(season)||!Number.isInteger(episode)))continue;
+      // A background scan may see the new copy before renaming finishes. The
+      // save identity supersedes that filename guess, while manual matches and
+      // watched entries remain protected above.
+      delete item.catalog;delete item.episodeMetadata;
+      Object.assign(item,{title,inferredTitle:title,kind,year,season,episode,seriesTitle:kind==='episode'?title:undefined,identificationLocked:true,identification:{version:1,confidence:1,reason:'保存时的作品信息'}});
+      if(selection?.source==='tmdb'&&/^\d+$/.test(String(selection.id))&&selection.kind===kind)item.catalog={source:'tmdb',id:String(selection.id),kind,title,year,pending:true};
+    }
+    identifyLibrary(this.store.data.items);this.store.persist();this.notify();
     return added.length;
   }
   refresh(ids, {background = false} = {}) {

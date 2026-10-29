@@ -4,6 +4,7 @@ import { BaiduWebService, webDownloadSign, isBaiduPage } from '../electron/servi
 import { TraktService } from '../electron/services/trakt.mjs';
 import { memoryStore } from './helpers.mjs';
 import { fetchSessionMedia } from '../electron/services/session-media.mjs';
+import { createStreamRelay } from '../electron/services/stream.mjs';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
@@ -132,6 +133,97 @@ test('file metadata cannot silently select a different file or an untrusted link
   }
 });
 
+test('a rejected metadata ticket switches to fresh signed original bytes and caches the working link',async()=>{
+  const store=memoryStore();store.data.items=[{source:'baidu',fsId:'123',path:'/old/03.mkv'}];
+  let checks=0,metadata=0,signers=0,downloads=0;const media=[];
+  const range='bytes=4294967296-4294967299',bytes=new Uint8Array([0x1a,0x45,0xdf,0xa3]);
+  const service=new BaiduWebService(store,{fetcher:async(input,options)=>{
+    const url=new URL(input);assert.equal(options.cache,'no-store');
+    if(url.pathname.includes('gettemplate')){
+      if(new URLSearchParams(options.body).get('fields').includes('sign1')){signers++;return json({result:{sign1:'Plaintext',sign3:'Key',timestamp:123}});}
+      checks++;return json({result:{bdstoken:'session-'+checks,loginstate:1}});
+    }
+    if(url.pathname==='/api/list')return json({list:[]});
+    if(url.pathname==='/api/filemetas'){
+      metadata++;assert.equal(url.searchParams.get('fsids'),'[123]');assert.equal(url.searchParams.has('target'),false);
+      return json({info:[{fs_id:'123',isdir:0,path:'/renamed/S04E03.mkv',dlink:'https://pcs.baidu.com/metadata?sign=private'}]});
+    }
+    if(url.pathname==='/api/mediainfo')return json({info:{}});
+    assert.equal(url.pathname,'/api/download');downloads++;
+    assert.equal(url.searchParams.get('fidlist'),'[123]');assert.equal(url.searchParams.get('bdstoken'),'session-2');
+    assert.equal(url.searchParams.get('sign'),webDownloadSign('Key','Plaintext'));assert.equal(url.searchParams.get('timestamp'),'123');
+    return json({dlink:[{dlink:'https://pcs.baidu.com/signed?sign=private'}]});
+  },mediaFetcher:async(input,options)=>{
+    const url=new URL(input),headers=new Headers(options.headers);media.push({route:url.pathname,ua:headers.get('user-agent')});
+    assert.equal(headers.get('range'),range);assert.equal(headers.get('referer'),'https://pan.baidu.com/disk/main');
+    if(url.pathname==='/metadata')return new Response(JSON.stringify({error_code:31362,error_msg:'sign error'}),{status:403});
+    assert.equal(url.pathname,'/signed');
+    return new Response(bytes,{status:206,headers:{'content-range':'bytes 4294967296-4294967299/8000000000','content-type':'video/x-matroska'}});
+  }});
+  const errors=[],relay=await createStreamRelay(options=>service.streamUrl('123',options),{fetcher:service.fetchMedia.bind(service),onError:error=>errors.push(error)});
+  try{
+    for(let i=0;i<2;i++){
+      const response=await fetch(relay.url,{headers:{Range:range}});assert.equal(response.status,206);
+      assert.equal(response.headers.get('content-range'),'bytes 4294967296-4294967299/8000000000');
+      assert.deepEqual(new Uint8Array(await response.arrayBuffer()),bytes);
+    }
+    assert.deepEqual(media,[{route:'/metadata',ua:'pan.baidu.com'},{route:'/signed',ua:null},{route:'/signed',ua:null}]);
+    assert.deepEqual({checks,metadata,signers,downloads},{checks:2,metadata:2,signers:1,downloads:1});
+    assert.equal(errors.length,0);assert.equal(store.data.items[0].path,'/renamed/S04E03.mkv');
+    assert.ok(!JSON.stringify(store.data).includes('private'));
+  }finally{relay.close();}
+});
+
+test('video metadata recovers a rejected original ticket using the current file ID and unmodified HDR bytes',async()=>{
+  const store=memoryStore();store.data.items=[{source:'baidu',fsId:'123',path:'/stale/03.mkv',progress:{position:17}}];
+  const progress=store.data.items[0].progress,errors=[];let metadata=0,videos=0;
+  const file={fs_id:'123',path:'/current/S04E03.DV.mkv',isdir:0,size:8000000000,md5:'a'.repeat(32)};
+  const original=new Uint8Array([0x1a,0x45,0xdf,0xa3]);
+  const service=new BaiduWebService(store,{fetcher:async(input,options)=>{
+    const url=new URL(input);assert.equal(options.cache,'no-store');
+    if(url.pathname.includes('gettemplate'))return json({result:{bdstoken:'private',loginstate:1}});
+    if(url.pathname==='/api/list')return json({list:[]});
+    if(url.pathname==='/api/filemetas'){metadata++;assert.equal(url.searchParams.get('fsids'),'[123]');return json({info:[{...file,dlink:'https://pcs.baidu.com/old?sign=private'}]});}
+    assert.equal(url.pathname,'/api/mediainfo');videos++;
+    assert.equal(url.searchParams.get('path'),file.path);assert.equal(url.searchParams.get('fs_id'),file.fs_id);
+    assert.equal(url.searchParams.get('nom3u8'),'1');assert.equal(url.searchParams.get('dlink'),'1');
+    return json({info:{size:file.size,md5:file.md5,dlink:'https://pcs.baidu.com/original?sign=private'}});
+  },mediaFetcher:async(input,options)=>{
+    const headers=new Headers(options.headers);assert.equal(headers.get('user-agent'),'pan.baidu.com');assert.equal(headers.get('range'),'bytes=4294967296-4294967299');
+    if(new URL(input).pathname==='/old')return new Response(JSON.stringify({error_code:31362}),{status:403});
+    return new Response(original,{status:206,headers:{'content-range':'bytes 4294967296-4294967299/8000000000'}});
+  }});
+  const relay=await createStreamRelay(options=>service.streamUrl('123',options),{fetcher:service.fetchMedia.bind(service),onError:error=>errors.push(error)});
+  try{
+    const response=await fetch(relay.url,{headers:{Range:'bytes=4294967296-4294967299'}});
+    assert.equal(response.status,206);assert.deepEqual(new Uint8Array(await response.arrayBuffer()),original);
+    assert.deepEqual({metadata,videos},{metadata:3,videos:1});assert.equal(errors.length,0);
+    assert.equal(store.data.items[0].path,file.path);assert.equal(store.data.items[0].progress,progress);
+    assert.ok(!JSON.stringify(store.data).includes('private'));
+  }finally{relay.close();}
+});
+
+test('video-ticket recovery rejects mismatched content, moved files and untrusted hosts',async()=>{
+  const file={fs_id:'123',path:'/current.mkv',size:100,isdir:0,md5:'a'.repeat(32)};
+  for(const change of ['size','md5','id','moved','directory','host']){
+    let metadata=0;
+    const video={size:100,md5:file.md5,dlink:'https://pcs.baidu.com/original'};
+    if(change==='size')video.size=99;
+    if(change==='md5')video.md5='b'.repeat(32);
+    if(change==='id')video.fs_id='456';
+    if(change==='host')video.dlink='https://baidu.com.attacker.test/file';
+    const service=new BaiduWebService(memoryStore(),{fetcher:async input=>{
+      const url=new URL(input);
+      if(url.pathname.includes('gettemplate'))return json({result:{bdstoken:'x',loginstate:1}});
+      if(url.pathname==='/api/list')return json({list:[]});
+      if(url.pathname==='/api/mediainfo')return json({info:video});
+      assert.equal(url.pathname,'/api/filemetas');metadata++;
+      return json({info:[{...file,...(metadata>1&&change==='moved'?{path:'/moved.mkv'}:{}),...(metadata>1&&change==='directory'?{isdir:1}:{})}]});
+    }});
+    await assert.rejects(service.streamUrl('123',{refresh:true}),/不一致|无法识别/);
+  }
+});
+
 test('rejected links force a fresh web-session check and signer without API cache',async()=>{
   let checks=0,signers=0;
   const service=new BaiduWebService(memoryStore(),{fetcher:async(input,options)=>{
@@ -141,6 +233,7 @@ test('rejected links force a fresh web-session check and signer without API cach
       checks++;return json({result:{bdstoken:'session-'+checks,loginstate:1}});
     }
     if(url.pathname==='/api/download') {assert.equal(url.searchParams.get('bdstoken'),'session-'+checks);return json({dlink:[{dlink:'https://pcs.baidu.com/file'}]});}
+    if(url.pathname==='/api/mediainfo')return json({info:{}});
     if(url.pathname==='/api/filemetas') return json({info:[{fs_id:'123',path:'/video.mkv',isdir:0}]});
     return json({list:[]});
   }});

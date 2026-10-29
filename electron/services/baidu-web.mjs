@@ -1,5 +1,6 @@
 import { ApiError, jsonRequest, withQuery } from '../core/http.mjs';
 import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
+import {isVideo} from '../core/media.mjs';
 
 export const BAIDU_WEB_HOME = 'https://pan.baidu.com/disk/main';
 export function isBaiduPage(value) {
@@ -106,17 +107,44 @@ export class BaiduWebService {
     // point at another file after the original name is reused.
     const info = await this.fileInfo(fsId, {dlink: true});
     if (Number(info.isdir) === 1) throw new Error('所选网盘文件是文件夹，无法播放。');
-    // Fresh original bytes retain HDR; metadata links require this CDN identity.
-    if (info.dlink) {
+    // Metadata links can be present yet rejected by the media server (31362).
+    // A relay retry must resolve a different original-file ticket, rather
+    // than asking for the same unusable metadata ticket again.
+    if (info.dlink && !refresh) {
       const link = this.rememberMediaLink(info.dlink, 'pan.baidu.com');
       rememberBaiduFile(this.store, info, this.notify); return link;
     }
     const variables = await this.sessionVariables();
+    if (refresh && isVideo(info.path)) {
+      // VideoURL with nom3u8/dlink returns the original file, not an HLS
+      // transcode. Resolve the current path by ID first, then confirm it has
+      // not changed while the path-based video endpoint was being queried.
+      let data;
+      try {data = await this.request('/api/mediainfo', {type:'VideoURL', path:info.path, fs_id:String(fsId), devuid:'0%1', clienttype:1, channel:'android_15_25010PN30C_bd-netdisk_1523a', nom3u8:1, dlink:1, media:1, origin:'dlna', bdstoken:variables.bdstoken});}
+      catch (error) {if (!this.connected) throw error;}
+      if (data?.info?.dlink) {
+        const video = data.info, current = await this.fileInfo(fsId);
+        if (Number(video.size) !== Number(info.size) || (video.md5 && info.md5 && video.md5 !== info.md5) || (video.fs_id !== undefined && String(video.fs_id) !== String(fsId)) || current.path !== info.path || Number(current.size) !== Number(info.size) || Number(current.isdir) === 1 || (current.md5 && info.md5 && current.md5 !== info.md5)) throw new Error('百度返回的视频信息与所选文件 ID 不一致，请重新播放。');
+        const link = this.rememberMediaLink(video.dlink, 'pan.baidu.com');
+        rememberBaiduFile(this.store, current, this.notify); return link;
+      }
+    }
     const values = await this.template(['sign1', 'sign3', 'timestamp']);
     if (!Number.isFinite(Number(values.timestamp)) || Number(values.timestamp) <= 0) throw new Error('百度网页下载参数不可用，请在官方网页确认该文件能正常下载。');
     const data = await this.request('/api/download', { type: 'dlink', fidlist: `[${fsId}]`, sign: webDownloadSign(values.sign3, values.sign1), timestamp: values.timestamp, bdstoken: variables.bdstoken });
     const link = this.rememberMediaLink(data.dlink?.[0]?.dlink, null);
     rememberBaiduFile(this.store, info, this.notify); return link;
+  }
+  async renameFile(file,newname) {
+    if(typeof newname!=='string'||!newname.trim()||/[<>:"/\\|?*\u0000-\u001f]/.test(newname)||/[. ]$/.test(newname)||newname.length>240||Buffer.byteLength(newname)>255)throw new Error('无效的标准文件名。');
+    const current=await this.fileInfo(file.fs_id);
+    if(Number(current.isdir)===1||current.path!==file.path||Number(current.size)!==Number(file.size))throw new Error('文件已发生变化，已保留当前名称。');
+    const variables=await this.sessionVariables();
+    const result=await this.request('/api/filemanager',{opera:'rename',async:0,ondup:'fail',bdstoken:variables.bdstoken},{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({filelist:JSON.stringify([{path:current.path,newname}])}).toString()});
+    if(result.info?.some(value=>Number(value.errno||0)!==0))throw new Error('部分文件未能重命名，已保留网盘中的文件。');
+    const updated=await this.fileInfo(file.fs_id);
+    if(updated.path!==current.path.slice(0,current.path.lastIndexOf('/')+1)+newname)throw new Error('重命名结果尚未确认，请在网盘中检查。');
+    return updated;
   }
   rememberMediaLink(link, userAgent) {
     let url; try { url = new URL(link); } catch { throw new Error('百度网页未返回原文件地址，可能需要在网页中完成安全验证。'); }

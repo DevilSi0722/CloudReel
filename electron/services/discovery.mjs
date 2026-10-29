@@ -25,15 +25,15 @@ export class DiscoveryService {
       const snapshot = await this.browser().page(seedHubUrl('/movies/' + id + '/'));
       const detail = detailFromSnapshot(snapshot);
       const resources = detail.resources.map(resource => {
-        const key = randomUUID(); this.resources.set(key, resource.url);
+        const key = randomUUID(); this.resources.set(key, {url:resource.url,work:detail.work});
         return {id:key, title:resource.title, provider:resource.provider};
       });
-      if (this.resources.size > 5000) {this.resources.clear(); this.cache.clear(); for (const [index, resource] of resources.entries()) this.resources.set(resource.id, detail.resources[index].url);}
+      if (this.resources.size > 5000) {this.resources.clear(); this.cache.clear(); for (const [index, resource] of resources.entries()) this.resources.set(resource.id, {url:detail.resources[index].url,work:detail.work});}
       return {...detail, resources};
     }));
   }
   resolve(id) {
-    const url = this.resources.get(id); if (!url) throw new Error('资源列表已过期，请重新打开作品。');
+    const url = this.resources.get(id)?.url; if (!url) throw new Error('资源列表已过期，请重新打开作品。');
     return this.serial(() => this.cached('resource:' + id, async () => {
       const resources = resourcesFromSnapshot(await this.browser().page(url));
       const baidu = resources.find(resource => resource.provider === 'baidu');
@@ -41,5 +41,6 @@ export class DiscoveryService {
       return baidu.url;
     }));
   }
+  work(id) {const value=this.resources.get(id);if(!value)throw new Error('资源列表已过期，请重新打开作品。');return structuredClone(value.work);}
   close() {this.view?.destroy(); this.view = null; this.cache.clear(); this.resources.clear();}
 }

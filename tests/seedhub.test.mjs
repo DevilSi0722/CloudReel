@@ -48,7 +48,19 @@ test('detail extracts deduplicated netdisk candidates without assuming pan_id me
   ], {url: 'https://sidhub.cc/movies/123/', heading: '示例电影'}));
   assert.equal(detail.title, '示例电影');
   assert.deepEqual(detail.resources.map(resource => resource.id), ['pan_id_10']);
-  assert.equal(detail.resources[0].provider, undefined);
+  assert.equal(detail.resources[0].provider, 'unknown');
+});
+
+test('resource annotations identify exact provider hosts before opening a share', () => {
+  const detail=detailFromSnapshot(page([
+    {href:'/link_start/?redirect_to=pan_id_1',text:'1080P',sourceHost:'pan.baidu.com'},
+    {href:'/link_start/?redirect_to=pan_id_2',text:'另一个版本',sourceHost:'pan.quark.cn'},
+    {href:'/link_start/?redirect_to=pan_id_3',sourceHost:'pan.xunlei.com'},
+    {href:'/link_start/?redirect_to=pan_id_4',sourceHost:'www.alipan.com'},
+    {href:'/link_start/?redirect_to=pan_id_5',sourceHost:'pan.baidu.com.attacker.test'},
+    {href:'/link_start/?redirect_to=pan_id_6',sourceHost:'constructor'}
+  ],{url:'https://sidhub.cc/movies/123/'}));
+  assert.deepEqual(detail.resources.map(resource=>resource.provider),['baidu','quark','xunlei','alipan','unknown','unknown']);
 });
 
 test('redirect extraction trusts a valid link password even if the page claims it is missing', () => {

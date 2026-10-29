@@ -41,7 +41,7 @@ async function run() {
     // A bounded sample; do not crawl the catalog or check every share link.
     for (const movie of catalog.movies.slice(0, 2)) {
       const detail = detailFromSnapshot(await website.page(movie.url));
-      stage({stage: 'detail', resources: detail.resources.length});
+      stage({stage: 'detail', resources: detail.resources.length, providers: Object.fromEntries(['baidu','quark','xunlei','alipan','unknown'].map(provider => [provider,detail.resources.filter(resource => resource.provider === provider).length]))});
       for (const candidate of detail.resources.slice(0, 3)) {
         const snapshot = await website.page(seedHubUrl(candidate.url));
         const resolved = resourcesFromSnapshot(snapshot);

@@ -16,7 +16,9 @@ export function pageSnapshot() {
     fileRows: [...document.querySelectorAll('.file-name, .filename, .wp-s-pan-table__file-name')].filter(node => clean(node.textContent) && node.getClientRects().length).length,
     anchors: [...document.querySelectorAll('a[href]')].slice(0, 3000).map(anchor => {
       const image = anchor.querySelector('img');
-      return {href: anchor.href, text: clean(anchor.textContent), image: image?.currentSrc || image?.src || image?.getAttribute('data-src'), imageAlt: image?.alt};
+      let sourceHost = '';
+      try {const hint=anchor.getAttribute('data-link');if(hint){const url=new URL(hint.includes('://')?hint:'https://'+hint);if(url.protocol==='https:'&&!url.username&&!url.password&&!url.port)sourceHost=url.hostname;}} catch {}
+      return {href: anchor.href, text: clean(anchor.textContent), image: image?.currentSrc || image?.src || image?.getAttribute('data-src'), imageAlt: image?.alt, sourceHost};
     }),
     forms: [...document.forms].map(form => ({action: form.action, method: form.method, fields: [...form.elements].map(field => field.name).filter(Boolean)}))
   };

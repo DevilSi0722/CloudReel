@@ -7,7 +7,7 @@ const root=process.env.CLOUDREEL_PACKAGE_ROOT||fileURLToPath(new URL('../../',im
 app.setName('CloudReel-Discovery-UI');app.setPath('userData',process.env.CLOUDREEL_TEST_DIRECTORY);
 let window,provider,liveCatalog;
 const state={settings:{baiduMode:'web',autoSync:false,autoScrape:false},accounts:{baidu:{connected:true,mode:'web',profile:{}},trakt:{connected:false}},items:[],collections:[],logs:[],pendingCount:0,scrape:{running:false},scan:{running:false},scanRoots:[],discoveryTransfers:[],runtime:{desktop:true,version:'0.3.20',mpvReady:true},player:null};
-const calls=[],wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const calls=[],wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));let pageThreeFailed=false;
 const until=async check=>{for(let i=0;i<100;i++){if(await check())return;await wait(40);}throw new Error('UI timeout');};
 app.whenReady().then(async()=>{
   if(process.env.CLOUDREEL_DISCOVERY_LIVE_IMAGES){
@@ -18,8 +18,13 @@ app.whenReady().then(async()=>{
   }
   ipcMain.handle('cloudreel:invoke',async(_event,method,payload)=>{
     calls.push({method,payload});let value=state;
-    if(method==='discovery:catalog') {await wait(payload.query==='旧查询'?400:20);value={movies:Array.from({length:payload.query?2:20},(_,index)=>({id:String(index+1),title:payload.query?payload.query+' '+(index+1):liveCatalog?.movies[index]?.title||'影视作品 '+(index+1),poster:liveCatalog?.movies[index]?.poster||null})),next:null};}
-    if(method==='discovery:detail') value={title:'硅谷 第四季',overview:'理想与现实之间，总有新的故事。选择版本后，将影片保存到自己的云端影院。',poster:null,resources:Array.from({length:14},(_,index)=>({id:'r'+index,title:'硅谷 第四季 · 1080P · 中英字幕 · 资源 '+(index+1)}))};
+    if(method==='discovery:catalog') {
+      await wait(payload.query==='旧查询'?400:60);
+      if(!payload.query&&payload.page===3&&!pageThreeFailed){pageThreeFailed=true;return {ok:false,error:'暂时无法读取下一页，请重试。'};}
+      const start=payload.page===2?20:payload.page===3?40:1;
+      value={movies:Array.from({length:payload.query?2:20},(_,index)=>({id:String(start+index),title:payload.query?payload.query+' '+(index+1):liveCatalog?.movies[index]?.title||'影视作品 '+(start+index),poster:liveCatalog?.movies[index]?.poster||null})),next:!payload.query&&payload.page<3?'next':null};
+    }
+    if(method==='discovery:detail') value={title:'硅谷 第四季',overview:'理想与现实之间，总有新的故事。选择版本后，将影片保存到自己的云端影院。',poster:null,resources:[...Array.from({length:14},(_,index)=>({id:'r'+index,title:'硅谷 第四季 · 1080P · 中英字幕 · 资源 '+(index+1),provider:'baidu'})),{id:'quark1',title:'夸克版本 1',provider:'quark'},{id:'quark2',title:'夸克版本 2',provider:'quark'},{id:'xunlei1',title:'迅雷版本',provider:'xunlei'},{id:'unknown1',title:'未标注版本',provider:'unknown'}]};
     if(method==='discovery:preview') value={handle:'preview',directory:'/',page:1,hasMore:false,files:[{fs_id:'100',server_filename:'硅谷 第四季',path:'/Silicon.Valley',isdir:1,size:0}]};
     if(method==='discovery:files') value={directory:'/Silicon.Valley',page:1,hasMore:false,files:[{fs_id:'101',server_filename:'Silicon.Valley.S04E03.mkv',path:'/Silicon.Valley/Silicon.Valley.S04E03.mkv',isdir:0,size:1024**3}]};
     if(method==='baidu:folders') value={files:[{fs_id:'300',server_filename:'电影',path:'/Movies',isdir:1,size:0}],hasMore:false,nextStart:1};
@@ -33,14 +38,30 @@ app.whenReady().then(async()=>{
   const capture=async name=>{if(!process.env.CLOUDREEL_UI_OUTPUT)return;fs.mkdirSync(process.env.CLOUDREEL_UI_OUTPUT,{recursive:true});await wait(300);window.webContents.invalidate();await window.webContents.capturePage();await wait(120);fs.writeFileSync(path.join(process.env.CLOUDREEL_UI_OUTPUT,name),(await window.webContents.capturePage()).toPNG());};
   await until(()=>js("Boolean(document.querySelector('.nav-item'))"));assert.equal(calls.some(call=>call.method==='discovery:catalog'),false);
   await click('发现');await until(()=>js("document.querySelectorAll('.discovery-card').length===20"));
+  assert.equal(calls.find(call=>call.method==='discovery:catalog').payload.order,'hot');
+  assert.equal(await js("document.querySelector('.discovery-sort button[aria-pressed=true]').textContent"),'近期热门');
   if(liveCatalog){await until(()=>js("Array.from(document.querySelectorAll('.discovery-cover img')).filter(img=>img.naturalWidth>0).length>=6"));console.log(JSON.stringify({liveArtworkLoaded:await js("Array.from(document.querySelectorAll('.discovery-cover img')).filter(img=>img.naturalWidth>0).length")}));}
   await capture('discovery-grid.png');
+  await js("window.scrollTo(0,document.documentElement.scrollHeight)");await until(()=>js("document.querySelectorAll('.discovery-card').length===39"));
+  assert.equal(calls.filter(call=>call.method==='discovery:catalog'&&call.payload.page===2).length,1,'one request per automatic page, with duplicate cards merged');
+  await js("window.scrollTo(0,document.documentElement.scrollHeight)");await until(()=>js("Boolean(document.querySelector('.discovery-page-error'))"));await wait(250);
+  assert.equal(calls.filter(call=>call.method==='discovery:catalog'&&call.payload.page===3).length,1,'pagination failures do not repeatedly retry');
+  assert.equal(await js("document.querySelectorAll('.discovery-card').length"),39,'a pagination failure preserves loaded cards');
+  await click('重试加载');await until(()=>js("document.querySelectorAll('.discovery-card').length===59"));
+  await js("window.scrollTo(0,document.documentElement.scrollHeight)");await wait(200);assert.equal(calls.some(call=>call.method==='discovery:catalog'&&call.payload.page>3),false);
+  await js("window.scrollTo(0,0)");
   await js("document.querySelector('[aria-label=\"刷新发现页\"]').click()");await until(()=>calls.some(call=>call.method==='discovery:catalog'&&call.payload.fresh===true));await until(()=>js("!document.querySelector('[aria-label=\"刷新发现页\"]').disabled"));
   await js("document.querySelector('.discovery-tabs button:nth-child(3)').click()");await until(()=>calls.some(call=>call.method==='discovery:catalog'&&call.payload.category==='shows'));
   await js("(()=>{const input=document.querySelector('[aria-label=\"搜索片源\"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(input,'旧查询');input.dispatchEvent(new Event('input',{bubbles:true}));})()");await wait(370);
   await js("(()=>{const input=document.querySelector('[aria-label=\"搜索片源\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'硅谷');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
   await until(()=>js("document.querySelector('.discovery-card strong')?.textContent==='硅谷 1'"));assert.equal(await js("Boolean(document.querySelector('.view-discovery'))"),true);
   await js("document.querySelector('.discovery-card').click()");await until(()=>js("document.querySelectorAll('.discovery-resource').length===12"));
+  assert.equal(await js("document.querySelector('.discovery-provider-tabs button[aria-pressed=true]').dataset.provider"),'baidu');
+  assert.equal(await js("[...document.querySelectorAll('.discovery-resource .discovery-provider')].every(node=>node.textContent==='百度网盘')"),true);
+  await js("document.querySelector('[data-provider=quark]').click()");assert.equal(await js("document.querySelectorAll('.discovery-resource:disabled').length"),2);
+  await js("document.querySelector('[data-provider=all]').click()");await click('显示更多资源');assert.equal(await js("document.querySelectorAll('.discovery-resource').length"),18);
+  assert.equal(await js("document.querySelectorAll('.discovery-resource:disabled').length"),3,'other providers are labelled without pretending to support saving');
+  await js("document.querySelector('[data-provider=baidu]').click()");
   await click('显示更多资源');assert.equal(await js("document.querySelectorAll('.discovery-resource').length"),14);await capture('discovery-detail.png');
   await js("document.querySelector('.discovery-resource').click()");await until(()=>js("Boolean(document.querySelector('.share-file'))"));
   assert.equal(await js("document.querySelector('.share-save-footer .primary').disabled"),true);
@@ -58,5 +79,5 @@ app.whenReady().then(async()=>{
   const writes=calls.filter(call=>call.method==='discovery:transfer');assert.equal(writes.length,1);assert.deepEqual(writes[0].payload,{handle:'preview',fsIds:['101'],target:{path:'/Movies',fsId:'300'},mount:true});
   await click('继续浏览');await until(()=>js("!document.querySelector('[role=dialog]')"));assert.equal(await js("document.querySelector('.discovery-task p').textContent"),'百度正在保存文件');
   assert.equal(BrowserWindow.getAllWindows().some(view=>view.isVisible()),false);
-  console.log(JSON.stringify({nativeDiscovery:true,staleSearchIgnored:true,progressiveResources:true,singleEpisodeSelection:true,destinationWithoutMount:true,transferSubmittedOnce:true,responsiveSave:true,visibleWindows:0}));provider?.close();window.destroy();app.quit();
+  console.log(JSON.stringify({nativeDiscovery:true,recentPopular:true,infiniteScroll:true,paginationRetry:true,providerFilters:true,staleSearchIgnored:true,progressiveResources:true,singleEpisodeSelection:true,destinationWithoutMount:true,transferSubmittedOnce:true,responsiveSave:true,visibleWindows:0}));provider?.close();window.destroy();app.quit();
 }).catch(error=>{console.error(error.stack);provider?.close();window?.destroy();app.exit(1);});

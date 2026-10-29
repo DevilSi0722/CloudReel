@@ -41,6 +41,7 @@ export type BaiduAuth = { mode?: 'web'; userCode: string; verificationUrl: strin
 export type Bridge = { filePath?(file: File): string; invoke<T = unknown>(method: string, payload?: unknown): Promise<T>; onState(callback: (state: AppState) => void): () => void; onPlayerAction?(callback: (action: string) => void): () => void; onPlayerPointer?(callback: (inside: boolean) => void): () => void; onPlayerActivity?(callback: () => void): () => void };
 declare global { interface Window { cloudreel?: Bridge } }
 export type DiscoveryMovie = {id:string;url:string;title:string;poster:string|null};
-export type DiscoveryDetail = {title:string;overview:string;poster:string|null;resources:{id:string;title:string}[]};
+export type DiscoveryProvider = 'baidu' | 'quark' | 'xunlei' | 'alipan' | 'unknown';
+export type DiscoveryDetail = {title:string;overview:string;poster:string|null;resources:{id:string;title:string;provider:DiscoveryProvider}[]};
 export type SharePreview = {handle:string;files:CloudFile[];directory:string;page:number;hasMore:boolean};
 export type TransferTask = {id:string;title:string;status:string;message:string;target:string;count:number;at:string;canCheck:boolean};

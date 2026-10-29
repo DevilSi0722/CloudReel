@@ -13,10 +13,10 @@ export class DiscoveryService {
     if (this.cache.size > 80) this.cache.delete(this.cache.keys().next().value);
     return structuredClone(value);
   }
-  catalog({category = 'all', query = '', page = 1, order = 'update', fresh = false} = {}) {
-    if (!['all','movies','shows','anime'].includes(category) || !['update','date','score'].includes(order) || typeof query !== 'string' || query.length > 80 || !Number.isInteger(page) || page < 1 || page > 1000) throw new Error('无效的片源筛选。');
+  catalog({category = 'all', query = '', page = 1, order = 'hot', fresh = false} = {}) {
+    if (!['all','movies','shows','anime'].includes(category) || !['hot','update','date','score'].includes(order) || typeof query !== 'string' || query.length > 80 || !Number.isInteger(page) || page < 1 || page > 1000) throw new Error('无效的片源筛选。');
     const path = query.trim() ? '/s/' + encodeURIComponent(query.trim()) + '/' : ({all:'/',movies:'/categories/1/movies/',shows:'/categories/3/movies/',anime:'/categories/2/movies/'})[category];
-    const url = new URL(seedHubUrl(path)); url.searchParams.set('order', order); if (page > 1) url.searchParams.set('page', String(page));
+    const url = new URL(seedHubUrl(path)); if(order !== 'hot') url.searchParams.set('order', order); if (page > 1) url.searchParams.set('page', String(page));
     return this.serial(() => this.cached(url.href, async () => catalogFromSnapshot(await this.browser().page(url.href)), fresh === true));
   }
   detail(id) {
@@ -26,7 +26,7 @@ export class DiscoveryService {
       const detail = detailFromSnapshot(snapshot);
       const resources = detail.resources.map(resource => {
         const key = randomUUID(); this.resources.set(key, resource.url);
-        return {id:key, title:resource.title};
+        return {id:key, title:resource.title, provider:resource.provider};
       });
       if (this.resources.size > 5000) {this.resources.clear(); this.cache.clear(); for (const [index, resource] of resources.entries()) this.resources.set(resource.id, detail.resources[index].url);}
       return {...detail, resources};

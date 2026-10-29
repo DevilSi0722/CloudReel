@@ -21,7 +21,7 @@
     "setup:desktop": "node scripts/setup-electron.mjs",
     "predist": "npm run setup:desktop",
     "dist": "npm run build && electron-builder --win portable --x64",
-    "dist:seedhub": "npm run build && electron-builder --win portable --x64 --config.directories.output=release/seedhub-test --config.productName=\"CloudReel SeedHub Test\" --config.appId=dev.cloudreel.seedhubtest --config.portable.artifactName=CloudReel-${version}-SeedHub-Test-win-x64.exe",
+    "dist:seedhub": "npm run build && electron-builder --win portable --x64 --config.extraMetadata.cloudreelChannel=seedhub-test --config.directories.output=release/seedhub-test --config.productName=\"CloudReel SeedHub Test\" --config.appId=dev.cloudreel.seedhubtest --config.portable.artifactName=CloudReel-${version}-SeedHub-Test-win-x64.exe",
     "icons:build": "node scripts/build-icons.mjs",
     "prebuild": "npm run native:build && npm run icons:build",
     "configure:trakt": "node scripts/configure-trakt.mjs",
@@ -93,6 +93,5 @@
   },
   "author": {
     "name": "CloudReel"
-  },
-  "cloudreelChannel": "seedhub-test"
+  }
 }

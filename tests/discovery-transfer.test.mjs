@@ -74,6 +74,15 @@ test('provider requests serialize and cached resource handles never expose arbit
   assert.equal(max,1);assert.equal(calls,2);assert.throws(() => service.resolve('https://attacker.test'),/过期/);
   await service.catalog({fresh:true});assert.equal(calls,3,'explicit refresh bypasses the catalog cache');
 });
+
+test('recently popular follows the site default route and retains its sort while paging',async () => {
+  const routes=[];
+  const service=new DiscoveryService({createBrowser:()=>({destroy(){},page:async input=>{const url=new URL(input);routes.push(url);return {url:input,status:200,anchors:[{href:'/movies/1/',text:'Movie'},{href:'/?page=2',text:'下一页'}]};}})});
+  const home=await service.catalog();assert.equal(routes[0].search,'');assert.equal(home.next,'https://sidhub.cc/?page=2');
+  await service.catalog({page:2});assert.equal(routes[1].searchParams.get('page'),'2');assert.equal(routes[1].searchParams.has('order'),false);
+  await service.catalog({order:'update'});assert.equal(routes[2].searchParams.get('order'),'update');
+  service.close();
+});
 test('transfer ingestion is scoped, additions-only and preserves an active scan and existing watch identity',async () => {
   const store=memoryStore(), old={id:'baidu:1',source:'baidu',fsId:'1',path:'/Movies/old.mkv',progress:{position:42},catalog:{id:'real'}};store.data.items=[old];
   store.upsert = Store.prototype.upsert;

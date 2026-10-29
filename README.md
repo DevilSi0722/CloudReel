@@ -34,6 +34,7 @@ CloudReel（云映）是一款开源的 Windows 影视客户端。通过应用�
 | | 体验 |
 | :--- | :--- |
 | **云端直连** | 应用内登录百度网盘、读取目录、播放原文件，无需手动配置百度开发者应用。 |
+| **发现片源** | 在原生 SeedHub 发现页浏览近期热门、搜索作品、自动续载，按网盘来源筛选资源，选择文件保存至自己的百度网盘并加入片库。 |
 | **海报片库** | TMDB 海报、背景、风格化标题与分集资料；简体中文优先，其次繁体中文、英文。 |
 | **智能归纳** | 识别季集、嵌套目录与数字文件名；支持多版本归纳、手动匹配和增量扫描。 |
 | **跨设备续看** | Trakt 登录授权、播放进度同步，以及单集、单季、整部的已观看／未观看标记。 |
@@ -102,6 +103,7 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 | `npm run check` | 执行测试与完整构建 |
 | `npm run verify:playback` | 隔离正式会话，在隐藏窗口验证真实百度网盘电影与剧集播放 |
 | `npm run verify:playback -- --mounts` | 用真实网盘片源验证文件夹挂载与改名后的播放恢复 |
+| `npm run verify:seedhub -- --share-api` | 在隐藏窗口只读验证 SeedHub 列表、资源来源与百度分享 |
 | `npm run dist` | 打包 Windows x64 便携版 |
 
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
@@ -139,6 +141,8 @@ CloudReel/
 | 自定义 | 环境变量 `CLOUDREEL_DATA_DIR` 指定的目录 |
 
 个人登录信息、TMDB Token、片库和观看记录保存在本机，不随源码上传。换电脑后重新登录账号，观看进度可通过 Trakt 同步。
+
+0.3.20 正式版已包含 SeedHub 发现功能，继续读取原有 `%APPDATA%/CloudReel`。此前的 SeedHub 测试包使用 `%APPDATA%/CloudReel-SeedHub-Test`，两个目录相互独立；不应将空测试库覆盖到正式库。
 
 `config/services.json` 是本机服务配置，已被 Git 忽略。若要使用自己的 Trakt 应用，可在复制示例配置后执行：
 

@@ -38,6 +38,12 @@ export function resourceProvider(input) {
   return ({'pan.xunlei.com': 'xunlei', 'pan.quark.cn': 'quark', 'www.alipan.com': 'alipan', 'www.aliyundrive.com': 'alipan'})[url.hostname] || null;
 }
 
+// The site's data-link gives the actual provider host without opening every
+// redirect. pan_id alone does not identify a provider. Recheck the final share
+// URL before any Baidu request, because site annotations can be stale.
+const providerHosts = {'pan.baidu.com':'baidu','pan.quark.cn':'quark','pan.xunlei.com':'xunlei','www.alipan.com':'alipan','www.aliyundrive.com':'alipan'};
+const providerHost = host => Object.hasOwn(providerHosts,host) ? providerHosts[host] : 'unknown';
+
 function readable(snapshot) {
   const text = `${snapshot.title || ''}\n${snapshot.text || ''}`;
   if (snapshot.challenge || /Just a moment|Checking your browser|请稍候.*验证|正在验证.*浏览器/i.test(text) || [403, 429].includes(snapshot.status)) {
@@ -85,7 +91,9 @@ export function detailFromSnapshot(snapshot) {
     if (url?.pathname !== '/link_start/') continue;
     const id = url.searchParams.get('redirect_to');
     if (!/^pan_id_\d+$/.test(id || '')) continue;
-    if (!resources.has(id)) resources.set(id, {id, title: label(anchor.text), url: url.href});
+    const provider = providerHost(anchor.sourceHost);
+    if (!resources.has(id)) resources.set(id, {id, title: label(anchor.text), url: url.href, provider});
+    else if (resources.get(id).provider === 'unknown' && provider !== 'unknown') resources.get(id).provider = provider;
   }
   let poster = null; try {const url = new URL(snapshot.poster); if (url.protocol === 'https:') poster = url.href;} catch {}
   return {title: label(snapshot.heading || snapshot.title).replace(/^#\s*/, ''), overview: label(snapshot.overview).slice(0,3000), poster, resources: [...resources.values()]};

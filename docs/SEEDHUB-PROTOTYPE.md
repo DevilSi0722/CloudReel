@@ -1,6 +1,8 @@
 # SeedHub 原生集成测试版（2026-10-29）
 
-分支：`codex/seedhub-integration-prototype`。版本：`0.3.20`。未提交、未推送 GitHub；保留工作区已有的 0.3.20 修改。
+本文件保留测试阶段的验收记录。`codex/seedhub-integration-prototype` 已合并至 `main`，功能进入 `0.3.20` 正式版；最新行为见 [0.3.20 更新说明](RELEASE-0.3.20.md)。
+
+正式版去除测试标记，恢复原有 `%APPDATA%/CloudReel` 及产品标识，默认近期热门、滚动自动续载，并提供网盘来源标识和筛选。以下独立测试包说明仅适用于历史测试通道；当前正式便携包为 `release/CloudReel-0.3.20-win-x64.exe`。
 
 ## 试用
 

@@ -6,19 +6,65 @@ const within = (file, root, source) => source === 'local' ? path.relative(root, 
 export class LibraryScanner {
   constructor(store, baidu, notify = () => {}, onComplete = () => {}) {Object.assign(this, {store, baidu, notify, onComplete}); this.state = {running:false,count:0,added:0,changed:0,directory:'',error:null};}
   roots() {return this.store.data.scanRoots ??= [];}
-  add(source, directory) {
+  add(source, directory, fsId) {
     if (!['local','baidu'].includes(source) || typeof directory !== 'string' || !directory.trim()) throw new Error('请选择有效的影视目录。');
     const location = source === 'local' ? path.resolve(directory) : path.posix.normalize('/' + directory.replace(/^\/+/, ''));
-    let root = this.roots().find(r => r.source === source && r.path === location);
-    if (!root) {root = {id:crypto.randomUUID(),source,path:location,enabled:true}; this.roots().push(root); this.store.persist();}
+    let root = this.roots().find(r => r.source === source && (fsId && r.fsId === String(fsId) || r.path === location && (!fsId || !r.fsId)));
+    if (!root) {root = {id:crypto.randomUUID(),source,path:location,enabled:true}; this.roots().push(root);}
+    root.path = location; if(fsId) root.fsId = String(fsId); root.enabled = true; this.store.persist();
     return root;
   }
+  async mountBaidu(input) {
+    if(this.state.running && !this.state.background) throw new Error('请先结束当前扫描。');
+    let directory = '/'; let fsId;
+    if(input?.path !== '/' || input?.fsId) {
+      const info = await this.baidu.fileInfo(input?.fsId);
+      if(Number(info.isdir) !== 1) throw new Error('请选择网盘文件夹。');
+      directory = info.path; fsId = info.fs_id;
+    }
+    // A different request may have started scanning while metadata was loading.
+    if(this.state.running && !this.state.background) throw new Error('请先结束当前扫描。');
+    const root = this.add('baidu',directory,fsId);this.refresh([root.id]);return root;
+  }
   cancel() {if(this.state.running) this.state.cancelled = true; this.notify();}
-  refresh(ids) {
-    if (this.state.running) throw new Error('扫描正在进行。');
+  async importBaiduDirectory(directory) {
+    // Additions only: never mark old files unavailable or restart a refresh.
+    if (typeof directory !== 'string' || !directory.startsWith('/') || directory.includes('\0')) throw new Error('无效的保存目录。');
+    const queue = [directory], seen = new Set(), found = new Map();
+    while (queue.length) {
+      const current = queue.shift(); if (seen.has(current)) continue; seen.add(current);
+      if (seen.size > 10000) throw new Error('目标目录包含过多子文件夹，请手动刷新。');
+      let start = 0;
+      for (let page=0;page<1000;page++) {
+        const result = await this.baidu.list(current,start);
+        for (const file of result.files) {
+          if (file.path !== directory && !file.path.startsWith(directory.replace(/\/$/,'') + '/')) throw new Error('文件超出了目标目录。');
+          if (Number(file.isdir) === 1) queue.push(file.path);
+          else if (isVideo(file.server_filename)) found.set(String(file.fs_id),file);
+        }
+        if (!result.hasMore) break;
+        if (!Number.isFinite(result.nextStart) || result.nextStart <= start || page === 999) throw new Error('目标目录分页异常。');
+        start = result.nextStart;
+      }
+    }
+    const existing = new Set(this.store.data.items.map(item => item.id));
+    const added = [...found.values()].map(baiduItem).filter(item => !existing.has(item.id));
+    this.store.upsert(added); identifyLibrary(this.store.data.items);this.store.persist();this.notify();
+    return added.length;
+  }
+  refresh(ids, {background = false} = {}) {
     const roots = this.roots().filter(r => r.enabled !== false && (!ids || ids.includes(r.id)));
     if (!roots.length) throw new Error('请先添加影视目录。');
-    const current = this.state = {running:true,count:0,added:0,changed:0,directory:'',error:null,cancelled:false};
+    if (this.state.running) {
+      if(this.state.cancelled) throw new Error('正在停止扫描，请稍后重试。');
+      // Reuse the current traversal when a user asks to see its progress. Roots
+      // becoming available after login can join the same serial scan safely.
+      for(const root of roots) if(!this.activeRoots.some(old => old.id === root.id)) this.activeRoots.push(root);
+      if(!background) this.state.background = false;
+      this.notify(); return this.state;
+    }
+    const current = this.state = {running:true,background,count:0,added:0,changed:0,directory:'',error:null,cancelled:false};
+    this.activeRoots = roots;
     this.notify(); this.active = this.run(roots, current); return current;
   }
   async run(roots, current) {
@@ -29,11 +75,18 @@ export class LibraryScanner {
       this.store.persist(); this.notify();
     }
     current.running=false;
-    this.store.log(current.cancelled ? '扫描已停止，已完成的目录保持更新。' : `片库已更新 · 新增 ${current.added}，更新 ${current.changed}${current.error ? '，部分目录稍后重试' : ''}。`);
-    this.notify(); this.onComplete();
+    if(!current.background || current.error) this.store.log(current.cancelled ? '扫描已停止，已完成的目录保持更新。' : `片库已更新 · 新增 ${current.added}，更新 ${current.changed}${current.error ? '，部分目录稍后重试' : ''}。`, current.error ? 'warning' : 'info');
+    this.notify(); if(!current.cancelled) this.onComplete(current);
   }
   async scanRoot(root,current) {
-    const queue = [root.path], seen = new Set(), found = new Map();
+    const previousPath = root.path; let rootPath = root.path;
+    if(root.source === 'baidu' && root.fsId) {
+      const info = await this.baidu.fileInfo(root.fsId);
+      if(Number(info.isdir) !== 1) throw new Error('挂载目录不可用');
+      if(current.cancelled) return;
+      rootPath = info.path;
+    }
+    const queue = [rootPath], seen = new Set(), found = new Map();
     while(queue.length && !current.cancelled) {
       const directory = queue.shift(); if(seen.has(directory)) continue; seen.add(directory);
       if(seen.size > 10000) throw new Error('目录过多');
@@ -68,8 +121,8 @@ export class LibraryScanner {
         Object.assign(old,{path:item.path,filename:item.filename,size:item.size,fileModifiedAt:item.fileModifiedAt});delete old.unavailable;current.changed++;
       }
     }
-    for(const item of byId.values()) if(item.source===root.source && within(item.path,root.path,root.source)) {if(!found.has(item.id)) item.unavailable=true;else delete item.unavailable;}
+    for(const item of byId.values()) if(item.source===root.source && (within(item.path,rootPath,root.source) || within(item.path,previousPath,root.source))) {if(!found.has(item.id)) item.unavailable=true;else delete item.unavailable;}
     this.store.data.items=[...byId.values()];identifyLibrary(this.store.data.items);
-    root.lastScannedAt=at;root.count=found.size;root.error=null;
+    root.path=rootPath;root.lastScannedAt=at;root.count=found.size;root.error=null;
   }
 }

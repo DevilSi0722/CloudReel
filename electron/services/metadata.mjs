@@ -262,9 +262,26 @@ export class MetadataService {
     }
     return catalog;
   }
-  async run({ refresh = false } = {}) {
-    if (this.running) return this.activeRun;
-    this.activeRun = this.performRun({ refresh });
+  foreground() {
+    if(this.queuedRun) this.queuedRun.background = false;
+    if(this.running && this.progress.background) {this.progress.background = false;this.notify();}
+  }
+  schedule({refresh = false, background = false} = {}) {
+    if(!this.running) return this.run({refresh, background});
+    if(!background) this.foreground();
+    // Include files discovered after the active run took its library snapshot.
+    // Coalesce follow-ups and preserve a user's foreground request.
+    this.queuedRun = {refresh: refresh || Boolean(this.queuedRun?.refresh), background: background && this.progress.background && this.queuedRun?.background !== false};
+    if(!this.scheduledRun) this.scheduledRun = this.activeRun.then(() => {
+      this.scheduledRun = null;
+      const next = this.queuedRun;this.queuedRun = null;
+      if(next) return this.run(next);
+    });
+    return this.scheduledRun;
+  }
+  async run({ refresh = false, background = false } = {}) {
+    if (this.running) {if(!background) this.foreground();return this.activeRun;}
+    this.activeRun = this.performRun({ refresh, background });
     return this.activeRun;
   }
   async restart() {
@@ -275,13 +292,13 @@ export class MetadataService {
     this.clearCache(); this.tmdbUnavailableUntil = 0; this.tmdbError = null;
     return this.run({ refresh: true });
   }
-  async performRun({ refresh }) {
+  async performRun({ refresh, background }) {
     this.running = true; this.cancelled = false;
     const controller = new AbortController(); this.controller = controller; const signal = controller.signal;
     identifyLibrary(this.store.data.items); this.store.persist();
     const groups = groupLibrary(this.store.data.items).filter(group => this.configured() && (refresh || titleArtDue(group.catalog)) && group.catalog?.source === 'tmdb'
       || !group.itemIds.some(id => this.store.item(id).metadataLocked) && (refresh || !group.catalog || group.catalog.pending || this.configured() && group.catalog.source !== 'tmdb'));
-    this.progress = { running: true, done: 0, total: groups.length, matched: 0, failed: 0, current: '', error: null }; this.notify();
+    this.progress = { running: true, background, done: 0, total: groups.length, matched: 0, failed: 0, current: '', error: null }; this.notify();
     const active = new Set();
     try {
       await mapConcurrent(groups, this.configured() ? 3 : 1, async group => {
@@ -314,8 +331,8 @@ export class MetadataService {
         finally {active.delete(group.title); this.progress.current = [...active].slice(0, 2).join('、'); if (!signal.aborted) this.progress.done++; this.notify();}
         if (!this.configured() && !this.cancelled) await new Promise(resolve => setTimeout(resolve, 900));
       }, signal);
-      this.store.log(`元数据${this.cancelled ? '已暂停' : '更新完成'}，已匹配 ${this.progress.matched} 部作品。`);
+      if(!this.progress.background) this.store.log(`元数据${this.cancelled ? '已暂停' : '更新完成'}，已匹配 ${this.progress.matched} 部作品。`);
     } finally { this.running = false; this.progress.running = false; this.progress.current = ''; if (this.publishTimer) this.publish(); this.notify(); }
   }
-  cancel() { this.cancelled = true; this.controller?.abort(new DOMException('元数据更新已停止', 'AbortError')); }
+  cancel() { this.queuedRun = null; this.cancelled = true; this.controller?.abort(new DOMException('元数据更新已停止', 'AbortError')); }
 }

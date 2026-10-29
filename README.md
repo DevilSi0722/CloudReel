@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.18-899cc4?style=flat-square" alt="Version 0.3.18" />
+  <img src="https://img.shields.io/badge/version-0.3.20-899cc4?style=flat-square" alt="Version 0.3.20" />
   <img src="https://img.shields.io/badge/platform-Windows_x64-64748b?style=flat-square" alt="Windows x64" />
   <img src="https://img.shields.io/badge/Node.js-24_LTS-64748b?style=flat-square" alt="Node.js 24 LTS" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT License" /></a>
@@ -81,9 +81,11 @@ npm run dev
 
 ### 第一次打开
 
-1. 在应用内登录百度网盘，选择存放影片的目录并扫描。
+1. 在应用内登录百度网盘，点击“挂载文件夹”，逐层选择影视目录并确认；其中的视频会自动入库。
 2. 在设置中填写自己的 **TMDB API Read Access Token**，获取海报和影片资料；未配置时可使用公开数据源后备方案。
 3. 登录 **Trakt**，启用观看进度和已观看状态同步。
+
+挂载后的首次读取显示整理进度。每次启动都会在后台静默刷新已挂载目录；开启设置中的“自动刷新片库”后，每 15 分钟再检查一次。后台刷新和自动获取资料均不显示进度提示；左下角“刷新片库”可随时发起有进度显示的刷新，后台已有任务时会直接显示该任务，保持当前页面。观看同步的读取、重试和开关统一位于“设置 → 观看同步”。
 
 TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；百度网盘和 Trakt 的日常使用通过账号登录完成。源码附带项目登记的公开 Trakt Client ID 与回调地址，不包含个人令牌或 Client Secret。
 
@@ -99,12 +101,13 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 | `npm run build` | 编译原生组件、生成图标、检查 TypeScript 并构建前端 |
 | `npm run check` | 执行测试与完整构建 |
 | `npm run verify:playback` | 隔离正式会话，在隐藏窗口验证真实百度网盘电影与剧集播放 |
+| `npm run verify:playback -- --mounts` | 用真实网盘片源验证文件夹挂载与改名后的播放恢复 |
 | `npm run dist` | 打包 Windows x64 便携版 |
 
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-0.3.18-win-x64.exe
+release/CloudReel-0.3.20-win-x64.exe
 ```
 
 便携版包含所需运行库，使用者无需安装 Node.js。构建产物不提交到源码仓库，可通过 GitHub Releases 分发。

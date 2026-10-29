@@ -20,16 +20,17 @@ export type LibraryPreferences = {status?: string; sort?: string; source?: strin
 export type Settings = { baiduMode: 'web' | 'oauth'; baiduClientId: string; traktClientId: string; traktRedirectUri: string; mpvPath: string; rootDir: string; autoSync: boolean; autoScrape: boolean; autoNext: boolean; autoRefresh?: boolean };
 export type MediaTrackInfo = {codec: string; lang: string; title: string; channels: string; sampleRate?: number; selected: boolean};
 export type PlaybackDefaults = {audioLanguage: string; subtitleLanguage: string; speed: number; subtitleDelay: number; subtitleSize: number; subtitleFont: string; rememberPlayback: boolean; skipIntro?: 'manual' | 'auto' | 'off'};
-export type ScanRoot = {id: string; source: 'local' | 'baidu'; path: string; enabled: boolean; lastScannedAt?: string; count?: number; error?: string | null};
+export type ScanRoot = {id: string; source: 'local' | 'baidu'; path: string; fsId?: string; enabled: boolean; lastScannedAt?: string; count?: number; error?: string | null};
 export type AppState = {
+  discoveryTransfers?: TransferTask[];
   mediaProbes?: Record<string,{running: boolean; error?: string | null}>; playbackDefaults?: PlaybackDefaults; scanRoots?: ScanRoot[];
   libraryPreferences?: LibraryPreferences;
   settings: Settings; items: MediaItem[]; collections: Collection[]; pendingCount: number; hasBaiduSecret: boolean; hasTmdbToken: boolean;
-  scrape: {running: boolean; done: number; total: number; matched: number; failed: number; current: string; error: string | null; tmdbConfigured: boolean; connectionError?: string | null};
+  scrape: {running: boolean; background?: boolean; done: number; total: number; matched: number; failed: number; current: string; error: string | null; tmdbConfigured: boolean; connectionError?: string | null};
   accounts: { baidu: Account; trakt: Account };
   logs: { id: string; at: string; level: string; message: string }[];
   player: null | PlayerStatus;
-  scan: { running: boolean; count: number; directory: string; error: string | null };
+  scan: { running: boolean; background?: boolean; count: number; directory: string; error: string | null };
   runtime: { mpvReady: boolean; version: string; desktop: boolean; fullscreen?: boolean; playerOverlay?: boolean; windowChrome?: boolean };
 };
 export type Account = { connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
@@ -39,3 +40,7 @@ export type MatchResult = { type: 'movie' | 'show'; title: string; year?: number
 export type BaiduAuth = { mode?: 'web'; userCode: string; verificationUrl: string; qrcodeUrl?: string; expiresAt: number };
 export type Bridge = { filePath?(file: File): string; invoke<T = unknown>(method: string, payload?: unknown): Promise<T>; onState(callback: (state: AppState) => void): () => void; onPlayerAction?(callback: (action: string) => void): () => void; onPlayerPointer?(callback: (inside: boolean) => void): () => void; onPlayerActivity?(callback: () => void): () => void };
 declare global { interface Window { cloudreel?: Bridge } }
+export type DiscoveryMovie = {id:string;url:string;title:string;poster:string|null};
+export type DiscoveryDetail = {title:string;overview:string;poster:string|null;resources:{id:string;title:string}[]};
+export type SharePreview = {handle:string;files:CloudFile[];directory:string;page:number;hasMore:boolean};
+export type TransferTask = {id:string;title:string;status:string;message:string;target:string;count:number;at:string;canCheck:boolean};

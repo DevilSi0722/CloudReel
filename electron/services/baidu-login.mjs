@@ -25,6 +25,7 @@ export function createBaiduLogin(store, notify, parent, icon) {
   }
   return {
     service,
+    browserSession,
     status: () => ({ ...service.status(), loginOpen: Boolean(loginWindow && !loginWindow.isDestroyed()) }),
     async restore() {
       // Inspect only our own provider partition; never import another browser's cookies.

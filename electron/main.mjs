@@ -22,6 +22,7 @@ import {MediaProbeService} from './services/media-probe.mjs';
 import {LibraryScanner} from './services/scanner.mjs';
 import {LibraryRefresh} from './services/library-refresh.mjs';
 import {FileManagementService} from './services/file-management.mjs';
+import {BaiduQuotaMonitor} from './services/baidu-quota.mjs';
 import {DiscoveryService} from './services/discovery.mjs';
 import {DiscoveryBrowser} from './services/discovery-browser.mjs';
 import {BaiduShareService} from './services/baidu-share.mjs';
@@ -51,9 +52,11 @@ else {
   const oauthBaidu = new BaiduService(store), trakt = new TraktService(store, { ...serviceConfig(projectDirectory).trakt, fetcher: metadataFetcher });
   const usingWebBaidu = () => store.data.settings.baiduMode !== 'oauth';
   const resolveMpv = () => discoverMpv(store.data.settings.mpvPath, process.resourcesPath, projectDirectory);
+  let quotaMonitor;
   const snapshot = () => {
     const state = store.snapshot();
     if (usingWebBaidu()) state.accounts.baidu = webLogin.status();
+    state.accounts.baidu.quota = quotaMonitor?.status();
     state.accounts.trakt.configured = trakt.configured();
     Object.assign(state.accounts.trakt, traktLogin.status());
     state.accounts.trakt.sync = sync.status();
@@ -62,17 +65,19 @@ else {
   let notifyTimer;
   const notify = () => {
     if (notifyTimer) return;
-    notifyTimer = setTimeout(() => { notifyTimer = null; if (window && !window.isDestroyed()) {const state = snapshot(); window.webContents.send('cloudreel:state', state); controls?.update(state);} }, 100);
+    notifyTimer = setTimeout(() => { notifyTimer = null; void quotaMonitor?.refresh(); if (window && !window.isDestroyed()) {const state = snapshot(); window.webContents.send('cloudreel:state', state); controls?.update(state);} }, 100);
   };
   const webLogin = createBaiduLogin(store, notify, () => window, applicationIcon);
   const traktLogin = createTraktLogin(trakt, store, notify, () => window, applicationIcon, () => {sync.reset(); void sync.pull();});
   const baidu = {
+    quota: () => (usingWebBaidu() ? webLogin.service : oauthBaidu).quota(),
     list: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).list(...args),
     fileInfo: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).fileInfo(...args),
     manageFile: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).manageFile(...args),
     streamUrl: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).streamUrl(...args),
     fetchMedia: (url, options) => usingWebBaidu() ? webLogin.service.fetchMedia(url, options) : fetch(url, options)
   };
+  quotaMonitor = new BaiduQuotaMonitor({read: () => baidu.quota(), notify, identity: () => usingWebBaidu() ? webLogin.service.connected && store.data.baiduWebProfile?.uk ? `web:${store.data.baiduWebProfile.uk}` : null : store.data.secrets.baiduToken ? `oauth:${store.data.baiduProfile?.uk ?? store.data.settings.baiduClientId}` : null});
   const sync = new SyncService(store, trakt, notify, () => player.session?.item.id ?? null);
   const artwork = new ArtworkCache(app.getPath('userData'), metadataFetcher);
   protocol.handle('cloudreel-art', request => artwork.response(request.url));
@@ -140,9 +145,9 @@ else {
     'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '',discovery.work(input?.id));},
     'discovery:files': input => transfers.list(input),
     'discovery:naming': input => transfers.naming(input),
-    'discovery:transfer': input => {if (fileManager.busy) throw new Error('请等待网盘文件操作完成。');if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input);},
+    'discovery:transfer': input => {if (fileManager.busy) throw new Error('请等待网盘文件操作完成。');if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input).finally(() => quotaMonitor.changed());},
     'discovery:tasks': () => transfers.status(),
-    'discovery:check': id => transfers.check(id),
+    'discovery:check': id => transfers.check(id).finally(() => quotaMonitor.changed()),
     'discovery:verifySite': () => {const browser = discovery.browser();openProviderWindow('SeedHub 网站验证','https://sidhub.cc/',browser.session,'https://sidhub.cc');},
     'discovery:openResource': async id => {const url = await discovery.resolve(id);openProviderWindow('百度网盘分享',url,webLogin.browserSession,'https://pan.baidu.com');},
     'settings:save': input => { if(['baiduMode','baiduClientId','baiduSecret','traktClientId','traktRedirectUri','mpvPath'].some(key => input?.[key] !== undefined)) {requireIdle(); cancelAuth(); webLogin.close(); traktLogin.close();} const previousTrakt = store.data.settings.traktClientId; store.saveSettings(input ?? {}); if (previousTrakt !== store.data.settings.traktClientId) sync.reset(); if (input?.tmdbToken?.trim()) void metadata.restart(); else if (input?.clearTmdbToken) {metadata.cancel(); metadata.clearCache();} else if (input?.autoScrape === false) metadata.cancel(); notify(); return snapshot(); },
@@ -153,7 +158,7 @@ else {
     },
     'account:disconnect': async provider => {
       requireIdle(); if (!['baidu', 'trakt'].includes(provider)) throw new Error('无效的账号类型。');
-      if (provider === 'baidu') fileManager.invalidate();
+      if (provider === 'baidu') {fileManager.invalidate(); quotaMonitor.reset();}
       cancelAuth(); store.setSecret(provider + 'Token', null); delete store.data[provider + 'Profile'];
       if (provider === 'baidu') await webLogin.disconnect();
       if (provider === 'trakt') traktLogin.close();
@@ -180,11 +185,12 @@ else {
     },
     'baidu:cancelAuth': () => cancelAuth(),
     'baidu:checkWeb': async () => { await webLogin.check(); return snapshot(); },
+    'baidu:quota': () => quotaMonitor.refresh({force: true}),
     'files:browse': input => fileManager.browse(input),
     'files:preview': input => fileManager.preview(input),
     'files:report': () => fileManager.lastReport,
     'files:cancel': () => fileManager.cancel(),
-    'files:commit': async input => {const result = await fileManager.commit(input); notify(); return result;},
+    'files:commit': async input => {try {const result = await fileManager.commit(input); notify(); return result;} finally {quotaMonitor.changed();}},
     'baidu:list': ({ directory, start = 0 }) => baidu.list(directory, Number(start)),
     'baidu:folders': async ({directory, start = 0}) => {
       const result = await baidu.list(directory, Number(start));
@@ -352,15 +358,16 @@ else {
   app.on('second-instance', () => { if (window.isMinimized()) window.restore(); window.focus(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', event => {
-    if (quitting) return; event.preventDefault(); discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
+    if (quitting) return; event.preventDefault(); quotaMonitor.stop();discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
     void player.stop().catch(() => {}).then(() => thumbnails.reset()).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
   });
   const retryTimer = setInterval(() => { void sync.flush(); }, 60000); retryTimer.unref();
   const pullTimer = setInterval(() => { if (!quitting) void sync.pull(); }, 30000); pullTimer.unref();
-  window.on('focus', () => { if (!quitting && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });
+  window.on('focus', () => { if (!quitting) void quotaMonitor.refresh(); if (!quitting && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });
   void sync.flush();
   void sync.pull();
   libraryRefresh.start();
+  quotaMonitor.start();
   if (usingWebBaidu()) void webLogin.restore().then(() => libraryRefresh.startup()).catch(() => {});
   scrapeLater(false, true);
   }).catch(error => { console.error('CloudReel startup failed:', error.message); dialog.showErrorBox('云映启动失败', error.message); app.exit(1); });

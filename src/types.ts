@@ -34,7 +34,8 @@ export type AppState = {
   scan: { running: boolean; background?: boolean; count: number; directory: string; error: string | null };
   runtime: { mpvReady: boolean; version: string; desktop: boolean; fullscreen?: boolean; playerOverlay?: boolean; windowChrome?: boolean };
 };
-export type Account = { connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
+export type BaiduQuota = {loading: boolean; total: number | null; used: number | null; available: number | null; updatedAt: string | null; error: string | null};
+export type Account = { quota?: BaiduQuota; connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
   sync?: {pulling: boolean; lastPulledAt?: string; positions?: number; watched?: number; remotePositions?: number; error?: string | null; warning?: string | null; watching?: {itemId: string; title: string; season?: number; episode?: number; expiresAt: string} | null}; };
 export type CloudFile = { fs_id: number | string; server_filename: string; path: string; size: number; isdir: number };
 export type RenameRule = {mode: 'standard' | 'replace' | 'affix'; search: string; replacement: string; prefix: string; suffix: string};

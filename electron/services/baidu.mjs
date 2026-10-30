@@ -1,6 +1,7 @@
 import { ApiError, jsonRequest, withQuery, tokenRecord } from '../core/http.mjs';
 import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
 import {manageBaiduFile} from './baidu-file-manager.mjs';
+import {normalizeBaiduQuota} from '../core/baidu-quota.mjs';
 
 export class BaiduService {
   constructor(store, { fetcher = fetch, oauthBase = 'https://openapi.baidu.com', apiBase = 'https://pan.baidu.com' } = {}) {
@@ -51,6 +52,9 @@ export class BaiduService {
       if (retry && ([-6, 110, 111].includes(Number(error.code)) || error.status === 401)) { await this.refresh(); return this.request(route, params, false); }
       throw error;
     }
+  }
+  async quota() {
+    return normalizeBaiduQuota(await this.request('/api/quota', {checkexpire: 1, checkfree: 1}));
   }
   async list(directory = '/', start = 0) {
     if (typeof directory !== 'string' || !directory.startsWith('/') || directory.includes('\0')) throw new Error('网盘路径必须以 / 开头。');

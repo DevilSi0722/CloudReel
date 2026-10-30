@@ -2,6 +2,7 @@ import { ApiError, jsonRequest, withQuery } from '../core/http.mjs';
 import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
 import {isVideo} from '../core/media.mjs';
 import {manageBaiduFile} from './baidu-file-manager.mjs';
+import {normalizeBaiduQuota} from '../core/baidu-quota.mjs';
 
 export const BAIDU_WEB_HOME = 'https://pan.baidu.com/disk/main';
 export function isBaiduPage(value) {
@@ -79,6 +80,10 @@ export class BaiduWebService {
       if (!await this.check()) throw new Error('请先在百度官方网页中登录账号。');
     }
     return this.variables;
+  }
+  async quota() {
+    const variables = await this.sessionVariables();
+    return normalizeBaiduQuota(await this.request('/api/quota', {checkexpire: 1, checkfree: 1, bdstoken: variables.bdstoken}));
   }
   async list(directory = '/', start = 0) {
     if (typeof directory !== 'string' || !directory.startsWith('/') || directory.includes('\0')) throw new Error('请选择有效的网盘目录。');

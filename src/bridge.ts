@@ -3,7 +3,7 @@ export const emptyState: AppState = {
   settings: { baiduMode: 'web', baiduClientId: '', traktClientId: '', traktRedirectUri: '', mpvPath: '', rootDir: '/', autoSync: true, autoScrape: true, autoNext: true },
   accounts: { baidu: { connected: false, configured: true, mode: 'web', profile: null }, trakt: { connected: false, configured: false, profile: null } },
   items: [], collections: [], scrape: {running: false, done: 0, total: 0, matched: 0, failed: 0, current: '', error: null, tmdbConfigured: false}, pendingCount: 0, logs: [], hasBaiduSecret: false, hasTmdbToken: false, player: null,
-  scan: { running: false, count: 0, directory: '', error: null }, runtime: { mpvReady: false, version: '0.3.20', desktop: false }
+  scan: { running: false, count: 0, directory: '', error: null }, runtime: { mpvReady: false, version: '0.3.21', desktop: false }
 };
 export const bridge: Bridge = window.cloudreel ?? {
   async invoke<T>(method: string): Promise<T> {

@@ -1,0 +1,86 @@
+import {app, BrowserWindow, ipcMain} from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
+const root = process.env.CLOUDREEL_PACKAGE_ROOT || fileURLToPath(new URL('../../', import.meta.url));
+app.setName('CloudReel-Quota-UI');app.setPath('userData', path.join(process.env.CLOUDREEL_TEST_DIRECTORY, 'profile'));
+const blank = {loading: true, total: null, used: null, available: null, updatedAt: null, error: null};
+const state = {settings: {baiduMode: 'web', autoSync: false, autoScrape: false}, accounts: {baidu: {connected: true, mode: 'web', profile: {netdisk_name: '我的网盘', vip: 'SVIP'}, quota: {...blank}}, trakt: {connected: false}}, items: [], collections: [], logs: [], pendingCount: 0, scrape: {running: false}, scan: {running: false}, scanRoots: [{id: 'movies', source: 'baidu', path: '/影视/电影', count: 86, lastScannedAt: '2026-10-30T04:30:00Z'}, {id: 'shows', source: 'baidu', path: '/影视/剧集', count: 243, lastScannedAt: '2026-10-30T04:30:00Z'}], runtime: {desktop: true, version: '0.3.21', mpvReady: true}, player: null};
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+let window, release, calls = [], failure = false;
+app.whenReady().then(async () => {
+  ipcMain.handle('cloudreel:invoke', async (_event, method) => {
+    calls.push(method);
+    if (method === 'baidu:quota') {
+      await new Promise(resolve => release = resolve);
+      if (failure) return {ok: false, error: 'temporary IPC failure'};
+      return {ok: true, value: state.accounts.baidu.quota};
+    }
+    return {ok: true, value: state};
+  });
+  window = new BrowserWindow({show: false, width: 1440, height: 1000, webPreferences: {preload: path.join(root, 'electron/preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, offscreen: true}});
+  for (const method of ['show', 'showInactive', 'focus']) window[method] = () => {throw new Error('visibility prohibited');};
+  await window.loadFile(path.join(root, 'dist/index.html'));
+  const js = script => window.webContents.executeJavaScript(script);
+  const publish = async quota => {state.accounts.baidu.quota = quota;window.webContents.send('cloudreel:state', state);await wait(90);};
+  const screenshot = async name => {
+    if (!process.env.CLOUDREEL_UI_OUTPUT) return;
+    await wait(350);fs.mkdirSync(process.env.CLOUDREEL_UI_OUTPUT, {recursive: true});
+    fs.writeFileSync(path.join(process.env.CLOUDREEL_UI_OUTPUT, name + '.png'), (await window.webContents.capturePage()).toPNG());
+  };
+  await wait(200);await js("Array.from(document.querySelectorAll('.nav-item')).find(b => b.textContent === '百度网盘').click()");await wait(300);
+  assert.equal(await js("document.querySelectorAll('.baidu-storage').length"), 1);
+  assert.equal(await js("document.querySelector('[aria-label=\"刷新网盘容量\"]').disabled"), true);
+  assert.equal(await js("document.querySelector('[role=meter]') === null"), true, 'unknown capacity must not appear as an empty drive');
+  const normal = {loading: false, total: 2199023255552, used: 824633720832, available: 1374389534720, updatedAt: '2026-10-30T04:32:00Z', error: null};
+  await publish(normal);
+  assert.equal(await js("document.querySelector('[role=meter]').getAttribute('aria-valuenow')"), '37.5');
+  assert.match(await js("document.querySelector('.storage-values').textContent"), /768 GB.*2 TB/);
+  assert.match(await js("document.querySelector('.storage-remaining').textContent"), /1.25 TB/);
+  await screenshot('quota-normal');
+  const before = await js("JSON.stringify(document.querySelector('.mounted-section').getBoundingClientRect().toJSON())");
+  await js("document.querySelector('[aria-label=\"刷新网盘容量\"]').click();document.querySelector('[aria-label=\"刷新网盘容量\"]').click()");await wait(80);
+  assert.equal(calls.filter(method => method === 'baidu:quota').length, 1);
+  assert.equal(await js("document.querySelector('[aria-label=\"刷新网盘容量\"]').disabled"), true);
+  assert.equal(await js("Boolean(document.querySelector('.busy-indicator'))"), false, 'quota does not block the page');
+  assert.equal(await js("JSON.stringify(document.querySelector('.mounted-section').getBoundingClientRect().toJSON())"), before, 'refresh keeps content stationary');
+  release();await wait(80);
+  await publish({...normal, loading: true});
+  assert.equal(await js("JSON.stringify(document.querySelector('.mounted-section').getBoundingClientRect().toJSON())"), before);
+  await publish({...normal, error: 'temporarily unavailable'});
+  assert.match(await js("document.querySelector('.storage-status').textContent"), /上次读数/);
+  assert.equal(await js("document.querySelector('[role=meter]').getAttribute('aria-valuenow')"), '37.5');
+  await screenshot('quota-stale');
+  failure = true;
+  await js("document.querySelector('[aria-label=\"刷新网盘容量\"]').click()");await wait(70);release();await wait(70);
+  failure = false;await publish({...normal, updatedAt: '2026-10-30T04:33:00Z'});
+  assert.equal(await js("document.querySelector('.baidu-storage').classList.contains('is-stale')"), false, 'automatic success clears a manual transport error');
+  await publish({...normal, used: normal.total * .95, available: normal.total * .05});
+  assert.equal(await js("document.querySelector('.baidu-storage').classList.contains('is-near-full')"), true);
+  assert.match(await js("document.querySelector('.storage-remaining').textContent"), /即将用满/);
+  await screenshot('quota-near-full');
+  await publish({...normal, used: normal.total * 1.2, available: 0});
+  assert.equal(await js("document.querySelector('[role=meter]').getAttribute('aria-valuenow')"), '100');
+  assert.match(await js("document.querySelector('.storage-remaining').textContent"), /超过/);
+  await publish({...blank, loading: false, error: 'temporarily unavailable'});
+  assert.equal(await js("document.querySelector('[role=meter]') === null"), true);
+  assert.match(await js("document.querySelector('.storage-remaining').textContent"), /重试/);
+  await screenshot('quota-unavailable');
+  await publish({...normal, used: 0, available: normal.total});
+  assert.equal(await js("document.querySelector('[role=meter]').getAttribute('aria-valuenow')"), '0');
+  await publish(normal);
+  for (const [width, height] of [[980, 680], [1440, 1000]]) {
+    window.setContentSize(width, height);await wait(150);
+    assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true);
+    assert.equal(await js("Array.from(document.querySelectorAll('.baidu-storage,.storage-heading,.storage-caption')).every(el => el.scrollWidth <= el.clientWidth)"), true);
+    assert.equal(await js("document.querySelector('[aria-label=\"刷新网盘容量\"]').getBoundingClientRect().right <= innerWidth"), true);
+    await screenshot(`quota-${width}`);
+  }
+  state.accounts.baidu = {connected: false, mode: 'web', profile: null};window.webContents.send('cloudreel:state', state);await wait(80);
+  assert.equal(await js("document.querySelectorAll('.baidu-storage').length"), 0);
+  assert.equal(calls.some(method => /baidu:(list|folders)|library:|settings:/.test(method)), false);
+  assert.equal(BrowserWindow.getAllWindows().some(view => view.isVisible()), false);
+  console.log(JSON.stringify({quotaUI: true, manualRefresh: true, stableLayout: true, staleRecovery: true, capacityWarnings: true, emptyAndUnavailable: true, responsive: true, visibleWindowsOpened: 0}));
+  window.destroy();app.quit();
+}).catch(error => {console.error(error.stack);window?.destroy();app.exit(1);});

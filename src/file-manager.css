@@ -18,7 +18,9 @@
 .file-row:hover {background:#ffffff04;}
 .file-row.is-selected {background:#a7b7ee0d;}
 .file-row>svg {flex-shrink:0;color:#9195a2;}
-.file-row.file-directory>svg:first-child {margin-left:32px;color:#abb8d7;}
+.file-directory-open {display:flex;align-items:center;gap:15px;flex:1;min-width:0;text-align:left;align-self:stretch;}
+.file-directory-open>svg {flex-shrink:0;color:#abb8d7;}
+.file-directory-open>svg:last-child {color:var(--faint);}
 .file-row-copy {flex:1;min-width:0;}
 .file-row-copy strong {display:block;font-size:var(--type-body);font-weight:450;overflow-wrap:anywhere;line-height:1.6;color:#d9dbe3;}
 .file-row-copy small {display:block;font-size:var(--type-small);color:var(--faint);margin-top:3px;}
@@ -54,5 +56,5 @@
 .file-operation-footer {display:flex;align-items:center;justify-content:flex-end;gap:11px;margin-top:22px;flex-shrink:0;}
 .button.destructive {background:#bc6963;color:#fff;}
 .button.destructive:hover:not(:disabled) {background:#ce7771;}
-@media(max-width:1050px) {.file-row {padding:14px;gap:11px;}.file-rule-fields {grid-template-columns:1fr;gap:12px;}.file-operation {padding:21px;}.file-row.file-directory>svg:first-child {margin-left:28px;}}
+@media(max-width:1050px) {.file-row {padding:14px;gap:11px;}.file-directory-open {gap:11px;}.file-rule-fields {grid-template-columns:1fr;gap:12px;}.file-operation {padding:21px;}}
 @media(prefers-reduced-motion:reduce) {.file-row {transition:none;}}

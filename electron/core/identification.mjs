@@ -88,6 +88,9 @@ export function identifyLibrary(items) {
 export function groupLibrary(items) {
   const groups = new Map();
   for (const item of items) {
+    // Keep history in the store, but confirmed missing sources must not create
+    // posters, seasons or playback versions. A successful rescan restores them.
+    if (item.unavailable) continue;
     const title = item.kind === 'episode' ? baseSeriesTitle(item.seriesTitle ?? item.title) : item.title;
     const identity = item.catalog ? (item.kind === 'episode' && item.catalog.source !== 'tmdb' ? normalizeTitle(baseSeriesTitle(item.inferredTitle ?? title)) : `${item.catalog.source}:${item.catalog.id}`) : normalizeTitle(title);
     const key = item.kind === 'episode' ? `show:${identity}` : `movie:${item.catalog ? identity : identity + ':' + (item.year ?? 'unknown')}`;

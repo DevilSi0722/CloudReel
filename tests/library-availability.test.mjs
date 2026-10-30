@@ -1,0 +1,31 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {groupLibrary} from '../electron/core/identification.mjs';
+import {LibraryScanner} from '../electron/services/scanner.mjs';
+import {baiduItem} from '../electron/core/media.mjs';
+import {memoryStore} from './helpers.mjs';
+const file = (id, folder, name = '嫁金钗.S01E01.mkv') => ({fs_id: id, path: `/Shows/${folder}/${name}`, server_filename: name, size: 100, isdir: 0});
+test('confirmed missing versions never create posters, seasons or version options and can reappear on restore', async () => {
+  const store = memoryStore(), a = file('1', 'A'), b = file('2', 'B'), ghost = file('3', 'A', '嫁金钗12~.mkv');
+  let present = [a, b, ghost];
+  const scanner = new LibraryScanner(store, {list: async () => ({files: present, hasMore: false})});
+  store.upsert = items => store.data.items.push(...items);scanner.add('baidu', '/Shows');
+  scanner.refresh();await scanner.active;
+  for (const item of store.data.items.filter(i => ['1', '2'].includes(i.fsId))) Object.assign(item, {catalog: {source: 'tmdb', id: '300146', title: '嫁金钗'}, title: '嫁金钗', seriesTitle: '嫁金钗', identificationLocked: true});
+  const old = store.data.items.find(i => i.fsId === '1');old.progress = {position: 37};old.favorite = true;old.versionPreferred = true;
+  const preserved = old.progress;
+  present = [b];scanner.refresh();await scanner.active;
+  const groups = groupLibrary(store.data.items);
+  assert.equal(groups.length, 1);assert.deepEqual(groups[0].itemIds, ['baidu:2']);assert.equal(groups[0].totalEpisodes, 1);
+  assert.equal(store.data.items.length, 3);assert.equal(old.progress, preserved);assert.equal(old.favorite, true);
+  present = [a, b];scanner.refresh();await scanner.active;
+  assert.deepEqual(new Set(groupLibrary(store.data.items)[0].itemIds), new Set(['baidu:1', 'baidu:2']));assert.equal(old.progress, preserved);
+  present = [];scanner.refresh();await scanner.active;assert.deepEqual(groupLibrary(store.data.items), []);
+});
+test('a cancelled or failed refresh retains visible sources; unavailable history never supplies live poster metadata', async () => {
+  const store = memoryStore(), live = baiduItem(file('1', 'A')), old = {...baiduItem(file('2', 'B')), unavailable: true, catalog: {source: 'tmdb', id: 'old', title: '旧条目'}};
+  store.data.items = [old, live];let fail = true;
+  const scanner = new LibraryScanner(store, {list: async () => {if (fail) throw new Error('offline');return {files: [], hasMore: false};}});scanner.add('baidu', '/Shows');
+  scanner.refresh();await scanner.active;assert.equal(groupLibrary(store.data.items)[0].catalog, undefined);
+  fail = false;scanner.refresh();scanner.cancel();await scanner.active;assert.deepEqual(groupLibrary(store.data.items)[0].itemIds, [live.id]);
+});

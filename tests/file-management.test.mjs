@@ -52,8 +52,56 @@ test('invalid names, existing files, case-insensitive collisions and duplicate t
   const duplicates = buildFilePlan([file('1', 'A.mkv'), file('2', 'B.mkv')], ['1', '2'], ['1', '2'].map(fsId => ({source: 'baidu', fsId, title: '电影', kind: 'movie', year: 2024, identificationLocked: true})), {action: 'rename', rule: {mode: 'standard'}});
   assert.ok(duplicates.every(value => value.status === 'blocked'));
 });
-test('folders, unsupported files and files absent from current directory cannot be selected', () => {
-  for (const files of [[{...directory}], [file('10', 'note.txt')], []]) assert.throws(() => buildFilePlan(files, ['10'], [], {action: 'delete'}), /所选文件/);
+test('folders can only be deleted; unsupported files and stale selections remain rejected', () => {
+  const folder = {...directory};
+  assert.equal(buildFilePlan([folder], ['10'], [], {action: 'delete'})[0].isDirectory, true);
+  assert.throws(() => buildFilePlan([folder], ['10'], [], {action: 'rename', rule}), /所选文件/);
+  for (const files of [[file('10', 'note.txt')], []]) assert.throws(() => buildFilePlan(files, ['10'], [], {action: 'delete'}), /所选文件/);
+});
+
+test('folder deletion hides all descendant versions, preserves history and leaves similar paths and other sources intact', async () => {
+  const f = fixture(), folder = file('30', 'Version A', {isdir: 1, size: undefined}), progress = {position: 30};
+  f.files = [folder, file('1', 'old.mkv')];
+  f.store.data.items = [
+    {source: 'baidu', fsId: '31', path: '/Mount/Version A/1.mkv', progress, favorite: true},
+    {source: 'baidu', fsId: '32', path: '/Mount/Version A/Season 2/2.mkv', catalog: {id: '70'}},
+    {source: 'baidu', fsId: '33', path: '/Mount/Version A/old.mkv', unavailable: true},
+    {source: 'baidu', fsId: '34', path: '/Mount/Version A-other/1.mkv'},
+    {source: 'baidu', fsId: '35', path: '/Mount/Version B/1.mkv'},
+    {source: 'local', fsId: '31', path: '/Mount/Version A/1.mkv'}
+  ];
+  f.store.data.pending = [{itemId: 'baidu:31'}];f.store.data.scanRoots[0].count = 5;
+  f.store.data.scanRoots.push({id: 'nested', source: 'baidu', path: '/Mount/Version A/Season 2', count: 1});
+  const plan = await f.manager.preview({rootId: 'mount', ids: ['30'], action: 'delete'});
+  assert.equal(plan.ready, 1);assert.equal(plan.files[0].isDirectory, true);assert.equal(f.writes.length, 0);
+  const result = await f.manager.commit({id: plan.id});assert.equal(result.success, 1);assert.equal(f.writes.length, 1);
+  assert.ok(f.store.data.items.slice(0, 3).every(item => item.unavailable));
+  assert.ok(f.store.data.items.slice(3).every(item => !item.unavailable));
+  assert.equal(f.store.data.items[0].progress, progress);assert.equal(f.store.data.items[0].favorite, true);assert.equal(f.store.data.pending.length, 1);
+  assert.equal(f.store.data.scanRoots[0].count, 3);assert.equal(f.store.data.scanRoots[1].count, 0);
+});
+
+test('folder preview is confined to direct children and deletion is blocked after moves or type changes', async () => {
+  for (const change of [{path: '/Mount/Other/Version A'}, {isdir: 0}]) {
+    const f = fixture();f.files = [file('30', 'Version A', {isdir: 1})];
+    await assert.rejects(f.manager.preview({rootId: 'mount', ids: ['10'], action: 'delete'}), /所选文件/);
+    const plan = await f.manager.preview({rootId: 'mount', ids: ['30'], action: 'delete'});
+    Object.assign(f.files[0], change);const result = await f.manager.commit({id: plan.id});
+    assert.equal(result.failed, 1);assert.equal(f.writes.length, 0);
+  }
+  const f = fixture();f.files = [file('30', 'Version A', {isdir: 1})];
+  const plan = await f.manager.preview({rootId: 'mount', ids: ['30'], action: 'delete'});
+  f.files[0].size = 9999;const result = await f.manager.commit({id: plan.id});
+  assert.equal(result.success, 1, 'directory size is not a stable identity field');
+});
+
+test('failed or uncertain folder deletion keeps library sources and never repeats the write', async () => {
+  const f = fixture();f.files = [file('30', 'Version A', {isdir: 1})];
+  f.store.data.items = [{source: 'baidu', fsId: '31', path: '/Mount/Version A/1.mkv'}];
+  let writes = 0;f.baidu.manageFile = async () => {writes++;throw new Error('network timeout');};
+  const plan = await f.manager.preview({rootId: 'mount', ids: ['30'], action: 'delete'});
+  const result = await f.manager.commit({id: plan.id});assert.equal(result.failed, 1);assert.equal(f.store.data.items[0].unavailable, undefined);
+  await assert.rejects(f.manager.commit({id: plan.id}), /失效/);assert.equal(writes, 1);
 });
 test('preview never writes, and commit updates paths without changing watch or metadata identity', async () => {
   const f = fixture(), progress = {position: 83}, catalog = {id: '42'}, metadata = {ids: {trakt: 20}};
@@ -147,6 +195,20 @@ for (const mode of ['web', 'oauth']) test(`${mode} file operations use POST, no 
   assert.ok(posts[0].url.searchParams.get('ondup') === 'fail' || new URLSearchParams(posts[0].options.body).get('ondup') === 'fail');
   await service.manageFile('delete', current); assert.deepEqual(JSON.parse(new URLSearchParams(posts[1].options.body).get('filelist')), ['/Mount/new.mkv']);
   uncertain = true; await assert.rejects(service.manageFile('delete', current)); assert.equal(posts.length, 3);
+});
+
+for (const mode of ['web', 'oauth']) test(`${mode} deletes a directory in one verified request and rejects renaming it or changing its type`, async () => {
+  const store = memoryStore();store.data.secrets.baiduToken = {access_token: 'test-token', expiresAt: Date.now() + 3600000};
+  const folder = file('30', 'Folder', {isdir: 1, size: undefined}), posts = [];
+  const service = mode === 'web' ? new BaiduWebService(store, {fetcher: async () => {}}) : new BaiduService(store);
+  service.fileInfo = async () => ({...folder});
+  if (mode === 'web') service.sessionVariables = async () => ({bdstoken: 'test-token'});
+  service.fetcher = async (url, options) => {posts.push({url, options});return new Response('{"errno":0,"info":[{"errno":0}]}');};
+  await assert.rejects(service.manageFile('rename', folder, 'Renamed'), /有效/);assert.equal(posts.length, 0);
+  await service.manageFile('delete', folder);assert.equal(posts.length, 1);
+  assert.equal(posts[0].options.method, 'POST');assert.deepEqual(JSON.parse(new URLSearchParams(posts[0].options.body).get('filelist')), ['/Mount/Folder']);
+  service.fileInfo = async () => ({...folder, isdir: 0});await assert.rejects(service.manageFile('delete', folder), /变化/);
+  await assert.rejects(service.manageFile('delete', {...folder, path: '/'}), /有效/);assert.equal(posts.length, 1);
 });
 test('provider per-file errors and asynchronous task acknowledgements cannot mark a file deleted', async () => {
   for (const response of [{errno: 0, info: [{errno: -9}]}, {errno: 0, taskid: 'unconfirmed'}]) {

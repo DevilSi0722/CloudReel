@@ -39,7 +39,7 @@ export type Account = { quota?: BaiduQuota; connected: boolean; configured: bool
   sync?: {pulling: boolean; lastPulledAt?: string; positions?: number; watched?: number; remotePositions?: number; error?: string | null; warning?: string | null; watching?: {itemId: string; title: string; season?: number; episode?: number; expiresAt: string} | null}; };
 export type CloudFile = { fs_id: number | string; server_filename: string; path: string; size: number; isdir: number };
 export type RenameRule = {mode: 'standard' | 'replace' | 'affix'; search: string; replacement: string; prefix: string; suffix: string};
-export type FilePlan = {id: string; action: 'rename' | 'delete'; ready: number; files: {fsId: string; original: string; name: string; reason: string; companion: boolean; status: 'ready' | 'blocked' | 'unchanged'}[]};
+export type FilePlan = {id: string; action: 'rename' | 'delete'; ready: number; files: {fsId: string; original: string; name: string; reason: string; companion: boolean; isDirectory?: boolean; status: 'ready' | 'blocked' | 'unchanged'}[]};
 export type FileReport = {rootId?: string; directory?: string; action: 'rename' | 'delete'; success: number; failed: number; results: {fsId: string; original: string; status: 'success' | 'failed' | 'skipped'; message: string}[]};
 export type MatchResult = { type: 'movie' | 'show'; title: string; year?: number; overview?: string; ids: { trakt: number } };
 export type BaiduAuth = { mode?: 'web'; userCode: string; verificationUrl: string; qrcodeUrl?: string; expiresAt: number };

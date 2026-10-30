@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {buildFilePlan, inside, manageable} from '../core/file-management.mjs';
+import {buildFilePlan, inside, manageable, deletable} from '../core/file-management.mjs';
 import {rememberBaiduFile} from '../core/baidu-file.mjs';
 import {isVideo} from '../core/media.mjs';
 
@@ -48,7 +48,7 @@ export class FileManagementService {
   }
   async preview(input) {
     if (this.busy) throw new Error('正在处理文件，请稍后重试。');
-    if (!Array.isArray(input?.ids) || !input.ids.length || input.ids.length > 500 || input.ids.some(id => !/^\d+$/.test(String(id)))) throw new Error('请选择 1 至 500 个视频或字幕。');
+    if (!Array.isArray(input?.ids) || !input.ids.length || input.ids.length > 500 || input.ids.some(id => !/^\d+$/.test(String(id)))) throw new Error('请选择 1 至 500 个视频、字幕或文件夹。');
     await this.verifyAccount();
     const account = this.account(), {directory, mount} = await this.location(input);
     const all = await this.listing(directory.path);
@@ -59,7 +59,21 @@ export class FileManagementService {
     for (const [key, value] of this.plans) if (this.now() - value.at > 10 * 60000) this.plans.delete(key);
     if (this.plans.size >= 8) this.plans.delete(this.plans.keys().next().value);
     this.plans.set(id, plan);
-    return {id, action: plan.action, files: entries.map(({fsId, original, name, reason, companion, status}) => ({fsId, original, name, reason, companion, status})), ready: entries.filter(entry => entry.status === 'ready').length};
+    return {id, action: plan.action, files: entries.map(({fsId, original, name, reason, companion, isDirectory, status}) => ({fsId, original, name, reason, companion, isDirectory, status})), ready: entries.filter(entry => entry.status === 'ready').length};
+  }
+  recordDeletion(entry) {
+    const folder = entry.isDirectory, affected = item => item.source === 'baidu' && (String(item.fsId) === entry.fsId || folder && inside(item.path, entry.file.path));
+    const active = this.store.data.items.filter(item => !item.unavailable && affected(item));
+    for (const item of this.store.data.items) if (affected(item)) item.unavailable = true;
+    for (const root of this.store.data.scanRoots ?? []) {
+      if (root.source !== 'baidu') continue;
+      if (folder && (root.path === entry.file.path || inside(root.path, entry.file.path))) {root.count = 0;root.error = '挂载文件夹已从网盘删除，可恢复文件夹或取消挂载。';}
+      else if (Number.isInteger(root.count) && inside(entry.file.path, root.path)) {
+        const removed = folder ? new Set(active.filter(item => inside(item.path, root.path)).map(item => String(item.fsId))).size : Number(isVideo(entry.original));
+        root.count = Math.max(0, root.count - removed);
+      }
+    }
+    this.store.persist();
   }
   async commit({id} = {}) {
     if (this.busy) throw new Error('已有文件任务正在执行。');
@@ -83,18 +97,14 @@ export class FileManagementService {
         try {
           if (plan.account !== this.account()) throw new Error('账号已变化，已停止处理。');
           const current = await this.baidu.fileInfo(entry.fsId), expected = entry.file;
-          if (!manageable(current) || current.path !== expected.path || Number(current.size) !== Number(expected.size) || expected.md5 && current.md5 && current.md5 !== expected.md5) throw new Error('文件已变化，请刷新后重试');
+          if (!(plan.action === 'delete' ? deletable(current) : manageable(current)) || Number(current.isdir) !== Number(expected.isdir) || current.path !== expected.path || !entry.isDirectory && (Number(current.size) !== Number(expected.size) || expected.md5 && current.md5 && current.md5 !== expected.md5)) throw new Error('文件已变化，请刷新后重试');
           // Re-resolve the mount for every write, in case it moved outside our
           // preview while this task was running. Never write using renderer paths.
           const location = await this.location(plan);
           if (location.mount.path !== plan.mountPath || location.directory.path !== plan.directory) throw new Error('文件夹已变化，已停止处理');
           const updated = await this.baidu.manageFile(plan.action, current, entry.name);
           if (plan.action === 'rename') rememberBaiduFile(this.store, updated, this.notify);
-          else {
-            for (const item of this.store.data.items) if (item.source === 'baidu' && String(item.fsId) === entry.fsId) item.unavailable = true;
-            if (isVideo(entry.original)) for (const root of this.store.data.scanRoots ?? []) if (root.source === 'baidu' && inside(entry.file.path, root.path) && Number.isInteger(root.count)) root.count = Math.max(0, root.count - 1);
-            this.store.persist();
-          }
+          else this.recordDeletion(entry);
           results.push({fsId: entry.fsId, original: entry.original, status: 'success', message: plan.action === 'rename' ? entry.name : '已从网盘删除'});
         } catch (error) {
           // A lost acknowledgement may follow a successful rename. Reconcile

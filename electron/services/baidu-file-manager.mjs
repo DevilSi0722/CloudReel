@@ -1,12 +1,13 @@
-import {validFilename, manageable} from '../core/file-management.mjs';
+import {validFilename, manageable, deletable} from '../core/file-management.mjs';
 
 // Path-based provider writes must be preceded by a fresh stable-ID check.
 // Never retry the POST: a timeout can mean the provider already applied it.
 export async function manageBaiduFile(service, action, file, newname, post) {
-  if (!['rename', 'delete'].includes(action) || !manageable(file) || !/^\d+$/.test(String(file.fs_id))) throw new Error('请选择有效的视频或字幕文件。');
+  const allowed = action === 'delete' ? deletable : manageable;
+  if (!['rename', 'delete'].includes(action) || !allowed(file) || !/^\d+$/.test(String(file.fs_id)) || typeof file.path !== 'string' || file.path === '/' || !file.path.startsWith('/') || file.path.includes('\0') || file.path.split('/').some(part => part === '.' || part === '..')) throw new Error('请选择有效的视频、字幕或文件夹。');
   if (action === 'rename' && !validFilename(newname)) throw new Error('无效的文件名。');
   const current = await service.fileInfo(file.fs_id);
-  if (!manageable(current) || current.path !== file.path || Number(current.size) !== Number(file.size) || file.md5 && current.md5 && file.md5 !== current.md5) throw new Error('文件已变化，请刷新后重试。');
+  if (!allowed(current) || Number(current.isdir) !== Number(file.isdir) || current.path !== file.path || Number(file.isdir) !== 1 && (Number(current.size) !== Number(file.size) || file.md5 && current.md5 && file.md5 !== current.md5)) throw new Error('文件已变化，请刷新后重试。');
   const filelist = action === 'delete' ? [current.path] : [{path: current.path, newname, ondup: 'fail'}];
   const result = await post(action, filelist);
   if (Number(result?.errno) !== 0 || result.taskid || result.task_id || result.info?.some(value => Number(value.errno ?? value.error_code ?? 0) !== 0)) throw new Error('网盘未确认操作成功，请刷新核对。');

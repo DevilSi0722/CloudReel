@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {groupLibrary} from '../../electron/core/identification.mjs';
 import {versionKey} from '../../electron/core/versions.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = process.env.CLOUDREEL_PACKAGE_ROOT || fileURLToPath(new URL('../../', import.meta.url));
 app.setName('CloudReel-Details-Regression');
 app.setPath('userData', path.join(process.env.CLOUDREEL_TEST_DIRECTORY, 'profile'));
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -59,6 +59,12 @@ app.whenReady().then(async()=>{
   assert.match(await selectedLabel(),/第 12 集/);assert.equal(playCount(),0);
   await js("document.querySelector('.detail-buttons .primary').click()");await wait(40);
   assert.deepEqual(calls.filter(call=>call.method==='player:play').at(-1).payload,{id:last.id});
+  const lastAlt={...last,id:'s1e12-alt',fsId:'s1e12-alt',filename:'s1e12-alt.mkv'};
+  state.items.push(lastAlt);last.versionPreferred=true;send();await wait(80);
+  last.unavailable=true;send();await wait(100);
+  assert.match(await selectedLabel(),/第 12 集/,'deleting a selected nonfirst episode version keeps its logical episode');
+  assert.equal(calls.filter(call=>call.method==='media:probe').at(-1).payload.id,lastAlt.id);
+  delete last.unavailable;delete last.versionPreferred;state.items=state.items.filter(item=>item.id!==lastAlt.id);send();await wait(80);await choose(2);
   // Background progress and unrelated probe results must not steal selection.
   second.technical={...second.technical,width:3840,height:2160,dynamicRange:'HDR10'};last.watchHistory={watched:true,checkedAt:new Date().toISOString()};send();await wait(100);
   assert.match(await selectedLabel(),/第 12 集/);assert.deepEqual(await facts(),['1080P','SDR','AAC','45 分钟','1.9 GB']);
@@ -71,9 +77,14 @@ app.whenReady().then(async()=>{
   assert.equal(calls.filter(call=>call.method==='media:probe').at(-1).payload.id,alternative.id);
   await js("document.querySelector('.detail-buttons .primary').click()");await wait(40);
   assert.deepEqual(calls.filter(call=>call.method==='player:play').at(-1).payload,{id:alternative.id});
+  alternative.unavailable=true;send();await wait(100);
+  assert.deepEqual(await facts(),['1080P','SDR','AAC','45 分钟','1.9 GB']);
+  assert.equal(await js("document.querySelector('.version-select')===null"),true,'a deleted selected version falls back to the remaining file');
+  assert.match(await selectedLabel(),/第 1 集/);
+  delete alternative.unavailable;send();await wait(100);
   await season(2);assert.match(await selectedLabel(),/第 2 季 · 第 1 集/);
-  await choose(1);assert.match(await selectedLabel(),/暂不可用/);
-  assert.equal(await js("document.querySelector('.detail-buttons .primary').disabled"),true);
+  assert.equal(await js("document.querySelectorAll('.episode-card').length"),1,'missing episodes are excluded from the visible library');
+  assert.equal(await js("document.querySelector('.detail-buttons .primary').disabled"),false);
   await season(0);assert.match(await selectedLabel(),/特别篇 · 第 1 集/);
   await season(1);await choose(1);
   // Reading full overviews is modal: no reflow, episode selection or playback.
@@ -146,6 +157,9 @@ app.whenReady().then(async()=>{
   delete nextSeason.progress;send();await wait(80);
   await js("document.querySelector('.back-link').click()");await wait(160);await open();
   assert.match(await selectedLabel(),/第 1 季 · 第 1 集/,'ordinary library entry still defaults to the first episode');
+  alternative.unavailable=true;send();await wait(100);
+  assert.equal(await js("document.querySelector('.version-select')===null"),true,'deleted alternate is absent from the version picker');
+  assert.match(await selectedLabel(),/第 1 集/);
   // Removal is resolved to an existing episode, never to a stale file ID.
   state.items=state.items.filter(item=>item.id!==first.id && item.id!==alternative.id);send();await wait(100);
   assert.match(await selectedLabel(),/第 2 集/);

@@ -19,7 +19,9 @@ export default function Details({ group, initialItemId, state, run, onBack, onMa
   choices.sort((a, b) => ((a.season ?? 1) === 0 ? Infinity : a.season ?? 1) - ((b.season ?? 1) === 0 ? Infinity : b.season ?? 1) || (a.episode ?? Infinity) - (b.episode ?? Infinity));
   const [selectedId, setSelectedId] = useState(() => entries.find(item => item.id === initialItemId)?.id ?? choices[0]?.id), [editing, setEditing] = useState<MediaItem | 'all' | null>(null), [more, setMore] = useState<{x: number; y: number} | null>(null);
   const [synopsis, setSynopsis] = useState<{title: string; text: string} | null>(null);
-  const current = entries.find(item => item.id === selectedId);
+  // Retained history identifies the logical episode when its selected file was
+  // deleted, so an available alternate keeps the same episode selected.
+  const current = state.items.find(item => item.id === selectedId);
   const selected = group.kind === 'episode' ? choices.find(item => current && versionKey(item) === versionKey(current)) ?? choices[0] : resumeItem(group, state.items);
   const season = selected?.season ?? 1;
   const selectedVersions = selected ? entries.filter(item => versionKey(item) === versionKey(selected)) : [];

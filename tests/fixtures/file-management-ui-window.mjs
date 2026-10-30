@@ -9,17 +9,18 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const state = {settings: {baiduMode: 'web', autoSync: false, autoScrape: false}, accounts: {baidu: {connected: true, mode: 'web', profile: {netdisk_name: '我的网盘'}}, trakt: {connected: false}}, items: [], collections: [], logs: [], pendingCount: 0, scrape: {running: false}, scan: {running: false}, scanRoots: [{id: 'mount', source: 'baidu', fsId: '10', path: '/影视', enabled: true, count: 12}], runtime: {desktop: true, version: '0.3.21'}, player: null};
 const movie = (id, name) => ({fs_id: String(id), path: '/影视/' + name, server_filename: name, size: 12 * 1024 ** 3, isdir: 0});
 const files = [movie('1', '难以识别的旧名称.2160p.WEB-DL.mkv'), movie('2', '难以识别的旧名称.2160p.WEB-DL.zh-Hans.ass'), movie('3', '另一个视频.mkv')];
-let window, calls = [], fail = false, releaseCommit;
+let window, calls = [], fail = false, releaseCommit, planAction, folderDeleted = false;
 app.whenReady().then(async () => {
   ipcMain.handle('cloudreel:invoke', async (_event, method, payload) => {
     calls.push({method, payload});
     if (method === 'files:browse') {
       if (fail) {fail = false; return {ok: false, error: '暂时无法读取目录'};}
       if (payload.directoryId === '11') {await wait(170); return {ok: true, value: {directory: {path: '/影视/子目录', fsId: '11'}, mountPath: '/影视', files: [], hasMore: false, nextStart: 0}};}
-      return {ok: true, value: {directory: {path: '/影视', fsId: '10'}, mountPath: '/影视', files: payload.start ? [movie('4', '分页视频.mkv')] : [{fs_id: '11', server_filename: '子目录', path: '/影视/子目录', isdir: 1}, ...files], hasMore: !payload.start, nextStart: payload.start ? 400 : 200}};
+      return {ok: true, value: {directory: {path: '/影视', fsId: '10'}, mountPath: '/影视', files: payload.start ? [movie('4', '分页视频.mkv')] : [...(folderDeleted ? [] : [{fs_id: '11', server_filename: '子目录', path: '/影视/子目录', isdir: 1}]), ...files], hasMore: !payload.start, nextStart: payload.start ? 400 : 200}};
     }
-    if (method === 'files:preview') return {ok: true, value: {id: 'preview', action: payload.action, ready: payload.ids.length, files: payload.ids.map(id => ({fsId: id, original: files.find(file => file.fs_id === id)?.server_filename || '分页视频.mkv', name: '硅谷 - S04E03 - 2160p WEB-DL.mkv', companion: false, status: 'ready', reason: ''}))}};
+    if (method === 'files:preview') {planAction = payload.action;return {ok: true, value: {id: 'preview', action: payload.action, ready: payload.ids.length, files: payload.ids.map(id => ({fsId: id, original: id === '11' ? '子目录' : files.find(file => file.fs_id === id)?.server_filename || '分页视频.mkv', isDirectory: id === '11', name: '硅谷 - S04E03 - 2160p WEB-DL.mkv', companion: false, status: 'ready', reason: ''}))}};}
     if (method === 'files:commit') {
+      if (planAction === 'delete') {folderDeleted = true;return {ok: true, value: {action: 'delete', success: 1, failed: 0, results: [{fsId: '11', original: '子目录', status: 'success', message: '已从网盘删除'}]}};}
       await new Promise(resolve => {releaseCommit = resolve;});
       return {ok: true, value: {action: 'rename', success: 1, failed: 1, results: [{fsId: '1', original: '影片.mkv', status: 'success', message: '影片 (2024).mkv'}, {fsId: '2', original: '字幕.ass', status: 'failed', message: '请刷新核对'}]}};
     }
@@ -36,9 +37,9 @@ app.whenReady().then(async () => {
   assert.equal(calls.some(call => call.method === 'files:browse'), false, 'mount landing does not enumerate');
   await js('document.querySelector(".mount-manage").click()'); await until('document.querySelectorAll(".file-row").length===4');
   await shot('file-browser');
-  await js('document.querySelector(".file-directory").click()'); await wait(25); await js('document.querySelector("[aria-label=返回上级文件夹]").click()');
+  await js('document.querySelector(".file-directory-open").click()'); await wait(25); await js('document.querySelector("[aria-label=返回上级文件夹]").click()');
   await until('document.querySelectorAll(".file-row").length===4'); await wait(200); assert.equal(await js('document.querySelectorAll(".file-row").length'), 4, 'late child reply ignored');
-  await js('document.querySelector(".file-row input").click()'); await clickText('重命名'); await until('!!document.querySelector(".file-operation")');
+  await js('document.querySelector(".file-row:not(.file-directory) input").click()'); await clickText('重命名'); await until('!!document.querySelector(".file-operation")');
   assert.equal(calls.some(call => call.method === 'files:commit'), false);
   await clickText('预览更改'); await until('!!document.querySelector(".file-plan-list")'); await shot('rename-preview');
   await js(`{let select=document.querySelector('[aria-label="重命名方式"]');select.value='replace';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
@@ -50,9 +51,9 @@ app.whenReady().then(async () => {
   await js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))'); await wait(300); assert.equal(await js('!!document.querySelector(".file-operation")'), true, 'busy dialog cannot disappear');
   releaseCommit(); await until('document.querySelector(".file-operation").textContent.includes("文件处理结果")');
   await shot('file-results'); await clickText('完成'); await until('!document.querySelector(".file-operation")');
-  await until('document.querySelectorAll(".file-row input").length===3');
+  await until('document.querySelectorAll(".file-row input").length===4');
   await js('document.querySelector("[aria-label=全选已显示文件]").click()'); await clickText('删除'); await until('!!document.querySelector(".file-operation")');
-  assert.match(await js('document.querySelector(".file-delete-explanation").textContent'), /网盘中的原文件/);
+  assert.match(await js('document.querySelector(".file-delete-explanation").textContent'), /文件夹及其全部内容/);
   await clickText('预览删除文件'); await until('!!document.querySelector(".file-operation-footer .destructive")');
   assert.equal(calls.filter(call => call.method === 'files:commit').length, 1, 'delete remains preview until explicit confirmation');
   await shot('delete-preview');
@@ -62,9 +63,22 @@ app.whenReady().then(async () => {
     assert.equal(await js('{const r=document.querySelector(".file-operation").getBoundingClientRect();r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth}'), true);
   }
   await clickText('取消'); await until('!document.querySelector(".file-operation")'); await js('document.querySelector("[aria-label=取消文件选择]").click()');
-  await clickText('加载更多文件'); await until('document.querySelectorAll(".file-row input").length===4');
+  await clickText('加载更多文件'); await until('document.querySelectorAll(".file-row input").length===5');
   assert.equal(calls.filter(call => call.method === 'files:browse').at(-1).payload.start, 200);
   fail = true; await js('document.querySelector("[aria-label=刷新文件列表]").click()'); await until('!!document.querySelector(".file-list [role=alert]")'); await clickText('重试'); await until('document.querySelectorAll(".file-row").length===4');
+  // A folder checkbox selects without navigating; only its name opens it.
+  const browses = calls.filter(call => call.method === 'files:browse').length;
+  await js('document.querySelector(".file-directory input").click()');
+  assert.equal(calls.filter(call => call.method === 'files:browse').length, browses);
+  assert.equal(await js("Array.from(document.querySelectorAll('.file-selection-bar button')).find(b=>b.textContent==='重命名').disabled"), true);
+  await clickText('删除');await until('!!document.querySelector(".file-operation")');
+  assert.equal(await js('document.querySelector(".file-sidecars")===null'), true, 'folder deletion has no redundant sidecar toggle');
+  await clickText('预览删除文件');await until('!!document.querySelector(".file-operation-footer .destructive")');
+  assert.match(await js('document.querySelector(".file-plan-list").textContent'), /文件夹 · 包含全部内容/);
+  await shot('folder-delete-preview');
+  await js('document.querySelector(".file-operation-footer .destructive").click()');await until('document.querySelector(".file-operation").textContent.includes("文件处理结果")');
+  await clickText('完成');await until('!document.querySelector(".file-operation")');await until('document.querySelector(".file-directory")===null');
+  assert.equal(calls.filter(call => call.method === 'files:commit').length, 2);
   assert.equal(BrowserWindow.getAllWindows().some(view => view.isVisible()), false);
   console.log(JSON.stringify({selection:true,previewRequired:true,invalidatedPreview:true,busyDismissBlocked:true,partialResults:true,deleteConfirmation:true,pagination:true,narrowLayout:true,visibleWindowsOpened:0}));
   window.destroy(); app.quit();

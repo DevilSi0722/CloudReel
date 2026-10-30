@@ -4,6 +4,7 @@ import {quality, safeName} from './discovery-naming.mjs';
 
 export const isSubtitle = name => /\.(?:srt|ass|ssa|vtt|sub|idx)$/i.test(name);
 export const manageable = file => Number(file.isdir) === 0 && (isVideo(file.server_filename) || isSubtitle(file.server_filename));
+export const deletable = file => manageable(file) || Number(file.isdir) === 1;
 export const inside = (value, root) => value.startsWith(root.replace(/\/$/, '') + '/');
 export function validFilename(name) {
   return typeof name === 'string' && name.trim().length > 0 && !/[<>:"/\\|?*\u0000-\u001f]/.test(name) && !/[. ]$/.test(name) && name.length <= 240 && Buffer.byteLength(name) <= 255 && !/^(?:CON|PRN|AUX|NUL|COM\d|LPT\d)(?:\.|$)/i.test(name);
@@ -27,12 +28,12 @@ function standardName(file, item) {
 }
 
 // Include only unambiguous, same-stem sidecars in this directory. Never infer
-// episode order or change extensions, folders, metadata or watch identities.
+// episode order or change extensions, folder names, metadata or watch identities.
 export function buildFilePlan(all, selectedIds, items, {action, rule, includeSubtitles = true}) {
   if (!['rename', 'delete'].includes(action)) throw new Error('不支持的文件操作。');
   if (action === 'rename') validateRule(rule);
   const ids = new Set(selectedIds.map(String)), selected = all.filter(file => ids.has(String(file.fs_id)));
-  if (selected.length !== ids.size || selected.some(file => !manageable(file))) throw new Error('所选文件已变化，或包含不支持的文件，请刷新后重选。');
+  if (selected.length !== ids.size || selected.some(file => !(action === 'delete' ? deletable(file) : manageable(file)))) throw new Error('所选文件已变化，或包含不支持的文件，请刷新后重选。');
   const videos = all.filter(file => manageable(file) && isVideo(file.server_filename));
   const companions = new Map();
   if (includeSubtitles) for (const file of all.filter(file => manageable(file) && isSubtitle(file.server_filename))) {
@@ -51,7 +52,7 @@ export function buildFilePlan(all, selectedIds, items, {action, rule, includeSub
       } else if (rule.mode === 'replace') name = stem.split(rule.search).join(rule.replacement || '') + extension;
       else name = (rule.prefix || '') + stem + (rule.suffix || '') + extension;
     }
-    return {fsId: String(file.fs_id), file, original, name, reason, companion: companions.has(String(file.fs_id)), parentId: companions.has(String(file.fs_id)) ? String(companions.get(String(file.fs_id)).fs_id) : undefined, status: 'ready'};
+    return {fsId: String(file.fs_id), file, original, name, reason, isDirectory: Number(file.isdir) === 1, companion: companions.has(String(file.fs_id)), parentId: companions.has(String(file.fs_id)) ? String(companions.get(String(file.fs_id)).fs_id) : undefined, status: 'ready'};
   });
   if (action === 'rename') for (const entry of entries) {
     const video = companions.get(entry.fsId);

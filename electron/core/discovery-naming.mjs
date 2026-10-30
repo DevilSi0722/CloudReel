@@ -40,7 +40,7 @@ function episodeIdentity(file,work,seasonOverride) {
 
 const excluded=file=>/(?:^|[\/ ._\[（(-])(?:sample|trailer|teaser|extras?|featurettes?|花絮|预告(?:片)?|特典|采访|制作特辑)(?=$|[\/ ._\]）)-])/i.test(file.path);
 const collection=file=>/合集|全[一二三四五六七八九十\d]+季|[1-9一二三四五六七八九]+\s*[-~至]\s*[1-9一二三四五六七八九]+\s*季|电影集合|collection|complete.series/i.test(file.path);
-function quality(filename) {
+export function quality(filename) {
   const tokens=[];
   for(const [pattern,value] of [[/\b2160p\b|\b4K\b/i,'2160p'],[/\b1080[pi]\b/i,'1080p'],[/\b720p\b/i,'720p'],[/\bBluRay\b|蓝光/i,'BluRay'],[/\bWEB[ ._-]?DL\b/i,'WEB-DL'],[/\bREMUX\b/i,'REMUX'],[/\b(?:DV|DOVI)\b|Dolby.Vision/i,'DV'],[/\bHDR10\+\b/i,'HDR10+'],[/\bHDR\b/i,'HDR'],[/\bx265\b|\bHEVC\b/i,'HEVC'],[/\bx264\b|\bAVC\b/i,'AVC']])if(pattern.test(filename))tokens.push(value);
   const part=filename.match(/(?:^|[ ._-])(?:CD|Part|Disc)[ ._-]*(\d{1,2})(?=[ ._-]|$)/i);if(part)tokens.unshift('CD'+part[1]);

@@ -15,6 +15,7 @@ export class LibraryScanner {
     return root;
   }
   async mountBaidu(input) {
+    if(this.suspended) throw new Error('请等待网盘文件操作完成。');
     if(this.state.running && !this.state.background) throw new Error('请先结束当前扫描。');
     let directory = '/'; let fsId;
     if(input?.path !== '/' || input?.fsId) {
@@ -28,6 +29,7 @@ export class LibraryScanner {
   }
   cancel() {if(this.state.running) this.state.cancelled = true; this.notify();}
   async importBaiduDirectory(directory,{identities=[],selection}={}) {
+    if(this.suspended) throw new Error('请等待网盘文件操作完成。');
     // Additions only: never mark old files unavailable or restart a refresh.
     if (typeof directory !== 'string' || !directory.startsWith('/') || directory.includes('\0')) throw new Error('无效的保存目录。');
     const queue = [directory], seen = new Set(), found = new Map();
@@ -66,6 +68,7 @@ export class LibraryScanner {
     return added.length;
   }
   refresh(ids, {background = false} = {}) {
+    if(this.suspended) throw new Error('请等待网盘文件操作完成。');
     const roots = this.roots().filter(r => r.enabled !== false && (!ids || ids.includes(r.id)));
     if (!roots.length) throw new Error('请先添加影视目录。');
     if (this.state.running) {

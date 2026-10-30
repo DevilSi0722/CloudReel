@@ -12,6 +12,7 @@ import './featured.css';
 import './poster-card.css';
 import './details.css';
 import './sources.css';
+import './file-manager.css';
 import './discovery.css';
 const Root = location.hash === '#player-controls' ? PlayerOverlayApp : App;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><Root /></React.StrictMode>);

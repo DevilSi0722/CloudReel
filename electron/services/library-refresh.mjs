@@ -10,14 +10,14 @@ export class LibraryRefresh {
     return this.scanner.roots().filter(root => root.enabled !== false && (root.source === 'local' || this.baiduConnected()));
   }
   startup() {
-    if(this.stopped || this.scanner.state.cancelled && this.scanner.state.running) return;
+    if(this.stopped || this.scanner.suspended || this.scanner.state.cancelled && this.scanner.state.running) return;
     const roots = this.available().filter(root => this.startupRoots.has(root.id) && !this.startedRoots.has(root.id));
     if(!roots.length) return;
     this.scanner.refresh(roots.map(root => root.id), {background: true});
     for(const root of roots) this.startedRoots.add(root.id);
   }
   tick() {
-    if(this.stopped || this.scanner.state.running) return;
+    if(this.stopped || this.scanner.suspended || this.scanner.state.running) return;
     // A restored connection may become usable after the initial login probe.
     this.startup();
     if(!this.automatic() || this.scanner.state.running) return;

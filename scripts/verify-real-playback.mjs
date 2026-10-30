@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const packaged=process.argv.includes('--packaged');
-const fixture=process.argv.includes('--discovery') ? 'real-baidu-discovery.mjs' : process.argv.includes('--mounts') ? 'real-baidu-mounts.mjs' : process.argv.includes('--details') ? 'real-baidu-details.mjs' : 'real-baidu-playback.mjs';
+const fixture=process.argv.includes('--files') ? 'real-baidu-file-management.mjs' : process.argv.includes('--discovery') ? 'real-baidu-discovery.mjs' : process.argv.includes('--mounts') ? 'real-baidu-mounts.mjs' : process.argv.includes('--details') ? 'real-baidu-details.mjs' : 'real-baidu-playback.mjs';
 const packageRoot=process.env.CLOUDREEL_VERIFY_PACKAGE_ROOT || (packaged ? path.join(root,'release/win-unpacked/resources/app.asar') : '');
 if(packaged) await fs.access(packageRoot);
 const source=process.env.CLOUDREEL_SOURCE_PROFILE || path.join(process.env.APPDATA,'CloudReel');

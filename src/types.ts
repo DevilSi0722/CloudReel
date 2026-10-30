@@ -22,6 +22,7 @@ export type MediaTrackInfo = {codec: string; lang: string; title: string; channe
 export type PlaybackDefaults = {audioLanguage: string; subtitleLanguage: string; speed: number; subtitleDelay: number; subtitleSize: number; subtitleFont: string; rememberPlayback: boolean; skipIntro?: 'manual' | 'auto' | 'off'};
 export type ScanRoot = {id: string; source: 'local' | 'baidu'; path: string; fsId?: string; enabled: boolean; lastScannedAt?: string; count?: number; error?: string | null};
 export type AppState = {
+  fileTask?: {running: boolean; cancelling?: boolean; action?: 'rename' | 'delete'; done: number; total: number};
   discoveryTransfers?: TransferTask[];
   mediaProbes?: Record<string,{running: boolean; error?: string | null}>; playbackDefaults?: PlaybackDefaults; scanRoots?: ScanRoot[];
   libraryPreferences?: LibraryPreferences;
@@ -36,6 +37,9 @@ export type AppState = {
 export type Account = { connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
   sync?: {pulling: boolean; lastPulledAt?: string; positions?: number; watched?: number; remotePositions?: number; error?: string | null; warning?: string | null; watching?: {itemId: string; title: string; season?: number; episode?: number; expiresAt: string} | null}; };
 export type CloudFile = { fs_id: number | string; server_filename: string; path: string; size: number; isdir: number };
+export type RenameRule = {mode: 'standard' | 'replace' | 'affix'; search: string; replacement: string; prefix: string; suffix: string};
+export type FilePlan = {id: string; action: 'rename' | 'delete'; ready: number; files: {fsId: string; original: string; name: string; reason: string; companion: boolean; status: 'ready' | 'blocked' | 'unchanged'}[]};
+export type FileReport = {rootId?: string; directory?: string; action: 'rename' | 'delete'; success: number; failed: number; results: {fsId: string; original: string; status: 'success' | 'failed' | 'skipped'; message: string}[]};
 export type MatchResult = { type: 'movie' | 'show'; title: string; year?: number; overview?: string; ids: { trakt: number } };
 export type BaiduAuth = { mode?: 'web'; userCode: string; verificationUrl: string; qrcodeUrl?: string; expiresAt: number };
 export type Bridge = { filePath?(file: File): string; invoke<T = unknown>(method: string, payload?: unknown): Promise<T>; onState(callback: (state: AppState) => void): () => void; onPlayerAction?(callback: (action: string) => void): () => void; onPlayerPointer?(callback: (inside: boolean) => void): () => void; onPlayerActivity?(callback: () => void): () => void };

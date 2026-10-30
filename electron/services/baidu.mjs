@@ -1,5 +1,6 @@
 import { ApiError, jsonRequest, withQuery, tokenRecord } from '../core/http.mjs';
 import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
+import {manageBaiduFile} from './baidu-file-manager.mjs';
 
 export class BaiduService {
   constructor(store, { fetcher = fetch, oauthBase = 'https://openapi.baidu.com', apiBase = 'https://pan.baidu.com' } = {}) {
@@ -62,6 +63,12 @@ export class BaiduService {
     // Serialize fsids as numeric JSON without losing precision through Number().
     const data = await this.request('/rest/2.0/xpan/multimedia', { method: 'filemetas', fsids: `[${fsId}]`, dlink: dlink ? 1 : 0 });
     return baiduFileInfo(data.list, fsId);
+  }
+  async manageFile(action, file, newname) {
+    return manageBaiduFile(this, action, file, newname, async (opera, filelist) => {
+      const url = withQuery(this.apiBase + '/rest/2.0/xpan/file', {method: 'filemanager', opera, access_token: await this.token()});
+      return jsonRequest(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({async: '0', ondup: 'fail', filelist: JSON.stringify(filelist)}).toString()}, this.fetcher);
+    });
   }
   async streamUrl(fsId) {
     const info = await this.fileInfo(fsId, {dlink: true});

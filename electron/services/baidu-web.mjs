@@ -1,6 +1,7 @@
 import { ApiError, jsonRequest, withQuery } from '../core/http.mjs';
 import {baiduFileInfo, rememberBaiduFile} from '../core/baidu-file.mjs';
 import {isVideo} from '../core/media.mjs';
+import {manageBaiduFile} from './baidu-file-manager.mjs';
 
 export const BAIDU_WEB_HOME = 'https://pan.baidu.com/disk/main';
 export function isBaiduPage(value) {
@@ -134,6 +135,12 @@ export class BaiduWebService {
     const data = await this.request('/api/download', { type: 'dlink', fidlist: `[${fsId}]`, sign: webDownloadSign(values.sign3, values.sign1), timestamp: values.timestamp, bdstoken: variables.bdstoken });
     const link = this.rememberMediaLink(data.dlink?.[0]?.dlink, null);
     rememberBaiduFile(this.store, info, this.notify); return link;
+  }
+  async manageFile(action, file, newname) {
+    return manageBaiduFile(this, action, file, newname, async (opera, filelist) => {
+      const variables = await this.sessionVariables();
+      return this.request('/api/filemanager', {opera, async: 0, ondup: 'fail', bdstoken: variables.bdstoken}, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({filelist: JSON.stringify(filelist)}).toString()});
+    });
   }
   async renameFile(file,newname) {
     if(typeof newname!=='string'||!newname.trim()||/[<>:"/\\|?*\u0000-\u001f]/.test(newname)||/[. ]$/.test(newname)||newname.length>240||Buffer.byteLength(newname)>255)throw new Error('无效的标准文件名。');

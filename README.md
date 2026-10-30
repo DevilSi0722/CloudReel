@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.20-899cc4?style=flat-square" alt="Version 0.3.20" />
+  <img src="https://img.shields.io/badge/version-0.3.21-899cc4?style=flat-square" alt="Version 0.3.21" />
   <img src="https://img.shields.io/badge/platform-Windows_x64-64748b?style=flat-square" alt="Windows x64" />
   <img src="https://img.shields.io/badge/Node.js-24_LTS-64748b?style=flat-square" alt="Node.js 24 LTS" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT License" /></a>
@@ -35,6 +35,7 @@ CloudReel（云映）是一款开源的 Windows 影视客户端。通过应用�
 | :--- | :--- |
 | **云端直连** | 应用内登录百度网盘、读取目录、播放原文件，无需手动配置百度开发者应用。 |
 | **发现片源** | 在原生 SeedHub 发现页浏览近期热门、搜索作品、自动续载，按网盘来源筛选资源；保存时预览并规范电影、剧集与字幕命名，加入片库并自动获取资料。 |
+| **网盘文件管理** | 在已挂载目录中多选视频与字幕，预览后批量规范命名、替换文字、添加前后缀或删除；自动核对同名冲突，保留片库资料与观看记录。 |
 | **海报片库** | TMDB 海报、背景、风格化标题与分集资料；简体中文优先，其次繁体中文、英文。 |
 | **智能归纳** | 识别季集、嵌套目录与数字文件名；支持多版本归纳、手动匹配和增量扫描。 |
 | **跨设备续看** | Trakt 登录授权、播放进度同步，以及单集、单季、整部的已观看／未观看标记。 |
@@ -109,7 +110,7 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-0.3.20-win-x64.exe
+release/CloudReel-0.3.21-win-x64.exe
 ```
 
 便携版包含所需运行库，使用者无需安装 Node.js。构建产物不提交到源码仓库，可通过 GitHub Releases 分发。

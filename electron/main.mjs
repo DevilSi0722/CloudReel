@@ -21,6 +21,7 @@ import {ThumbnailService} from './services/thumbnails.mjs';
 import {MediaProbeService} from './services/media-probe.mjs';
 import {LibraryScanner} from './services/scanner.mjs';
 import {LibraryRefresh} from './services/library-refresh.mjs';
+import {FileManagementService} from './services/file-management.mjs';
 import {DiscoveryService} from './services/discovery.mjs';
 import {DiscoveryBrowser} from './services/discovery-browser.mjs';
 import {BaiduShareService} from './services/baidu-share.mjs';
@@ -56,7 +57,7 @@ else {
     state.accounts.trakt.configured = trakt.configured();
     Object.assign(state.accounts.trakt, traktLogin.status());
     state.accounts.trakt.sync = sync.status();
-    return { ...state, discoveryTransfers: transfers.status(), collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
+    return { ...state, fileTask: fileManager.status(), discoveryTransfers: transfers.status(), collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
   };
   let notifyTimer;
   const notify = () => {
@@ -68,6 +69,7 @@ else {
   const baidu = {
     list: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).list(...args),
     fileInfo: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).fileInfo(...args),
+    manageFile: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).manageFile(...args),
     streamUrl: (...args) => (usingWebBaidu() ? webLogin.service : oauthBaidu).streamUrl(...args),
     fetchMedia: (url, options) => usingWebBaidu() ? webLogin.service.fetchMedia(url, options) : fetch(url, options)
   };
@@ -105,11 +107,19 @@ else {
     scrapeLater(false,true);notify();return count;
   }});
   const libraryRefresh = new LibraryRefresh(scanner, {baiduConnected: () => usingWebBaidu() ? webLogin.service.connected : Boolean(store.data.secrets.baiduToken), automatic: () => store.data.settings.autoRefresh !== false});
+  const fileManager = new FileManagementService(store, baidu, {
+    notify,
+    account: () => `${store.data.settings.baiduMode}:${usingWebBaidu() ? store.data.baiduWebProfile?.uk : store.data.baiduProfile?.uk}`,
+    verifyAccount: async () => {if (usingWebBaidu()) {if (!await webLogin.service.check()) throw new Error('请先重新连接百度网盘。');} else await oauthBaidu.token();},
+    blocked: () => Boolean(player.session || player.opening || scanner.state.running || transfers.busy),
+    begin: async () => {scanner.suspended = true; mediaProbe.cancel(); metadata.cancel(); await metadata.activeRun;},
+    end: () => {scanner.suspended = false; scrapeLater(false, true);}
+  });
   function scrapeLater(refresh = false, background = false) {
     if(!store.data.settings.autoScrape || quitting) return;
     void metadata.schedule({refresh, background});
   }
-  function requireIdle() { if (player.session || player.opening || scanner.state.running || sync.flushing || transfers.busy) throw new Error('请等待当前播放、扫描、保存或同步操作结束，再修改账号及播放器设置。'); }
+  function requireIdle() { if (player.session || player.opening || scanner.state.running || sync.flushing || transfers.busy || fileManager.busy) throw new Error('请等待当前播放、扫描、文件处理、保存或同步操作结束，再修改账号及播放器设置。'); }
   function cancelAuth() { if (auth?.timer) clearTimeout(auth.timer); auth = null; }
   const externalOrigins = new Set(['https://pan.baidu.com', 'https://openapi.baidu.com', 'https://app.trakt.tv', 'https://trakt.tv', 'https://auth.trakt.tv', 'https://github.com', 'https://mpv.io', 'https://www.themoviedb.org', 'https://movie.douban.com', 'https://www.tvmaze.com']);
   async function openExternal(url) {
@@ -130,7 +140,7 @@ else {
     'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '',discovery.work(input?.id));},
     'discovery:files': input => transfers.list(input),
     'discovery:naming': input => transfers.naming(input),
-    'discovery:transfer': input => {if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input);},
+    'discovery:transfer': input => {if (fileManager.busy) throw new Error('请等待网盘文件操作完成。');if (!usingWebBaidu()) throw new Error('片源转存需要使用百度网页登录。');return transfers.transfer(input);},
     'discovery:tasks': () => transfers.status(),
     'discovery:check': id => transfers.check(id),
     'discovery:verifySite': () => {const browser = discovery.browser();openProviderWindow('SeedHub 网站验证','https://sidhub.cc/',browser.session,'https://sidhub.cc');},
@@ -143,6 +153,7 @@ else {
     },
     'account:disconnect': async provider => {
       requireIdle(); if (!['baidu', 'trakt'].includes(provider)) throw new Error('无效的账号类型。');
+      if (provider === 'baidu') fileManager.invalidate();
       cancelAuth(); store.setSecret(provider + 'Token', null); delete store.data[provider + 'Profile'];
       if (provider === 'baidu') await webLogin.disconnect();
       if (provider === 'trakt') traktLogin.close();
@@ -169,6 +180,11 @@ else {
     },
     'baidu:cancelAuth': () => cancelAuth(),
     'baidu:checkWeb': async () => { await webLogin.check(); return snapshot(); },
+    'files:browse': input => fileManager.browse(input),
+    'files:preview': input => fileManager.preview(input),
+    'files:report': () => fileManager.lastReport,
+    'files:cancel': () => fileManager.cancel(),
+    'files:commit': async input => {const result = await fileManager.commit(input); notify(); return result;},
     'baidu:list': ({ directory, start = 0 }) => baidu.list(directory, Number(start)),
     'baidu:folders': async ({directory, start = 0}) => {
       const result = await baidu.list(directory, Number(start));
@@ -271,7 +287,7 @@ else {
     },
     'sync:retry': async () => { await sync.flush(); notify(); return snapshot(); },
     'media:probe': ({id,force=false}) => {mediaProbe.request(id,Boolean(force));return snapshot();},
-    'player:play': ({ id, fromBeginning = false }) => {mediaProbe.cancel();return player.play(id, Boolean(fromBeginning));},
+    'player:play': ({ id, fromBeginning = false }) => {if (fileManager.busy) throw new Error('请等待网盘文件操作完成后播放。');mediaProbe.cancel();return player.play(id, Boolean(fromBeginning));},
     'player:stop': () => player.stop(),
     'player:pause': () => player.togglePause(),
     'player:activate': () => {if (player.session && window && !window.isDestroyed() && !window.isFocused()) window.focus();},
@@ -303,6 +319,7 @@ else {
     if (overlaySender && !overlayMethods.has(method) || !overlaySender && method === 'player:overlayRegions') return {ok: false, error: '无效的播放器调用。'};
     try {
       if (typeof method !== 'string' || !Object.hasOwn(handlers, method)) throw new Error('不支持的操作。');
+      if (fileManager.busy && /^(?:settings:save|library:(?:removeRoot|importBaidu|importLocal|identify|remove)|metadata:(?:match|refresh)|trakt:match|discovery:check)$/.test(method)) throw new Error('请等待网盘文件操作完成。');
       return { ok: true, value: await handlers[method](payload) };
     } catch (error) { return { ok: false, error: error.message || '操作失败，请重试。' }; }
   });

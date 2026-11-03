@@ -22,6 +22,7 @@ export type MediaTrackInfo = {codec: string; lang: string; title: string; channe
 export type PlaybackDefaults = {audioLanguage: string; subtitleLanguage: string; speed: number; subtitleDelay: number; subtitleSize: number; subtitleFont: string; rememberPlayback: boolean; skipIntro?: 'manual' | 'auto' | 'off'};
 export type ScanRoot = {id: string; source: 'local' | 'baidu'; path: string; fsId?: string; enabled: boolean; lastScannedAt?: string; count?: number; error?: string | null};
 export type AppState = {
+  update?: AppUpdate;
   fileTask?: {running: boolean; cancelling?: boolean; action?: 'rename' | 'delete'; done: number; total: number};
   discoveryTransfers?: TransferTask[];
   mediaProbes?: Record<string,{running: boolean; error?: string | null}>; playbackDefaults?: PlaybackDefaults; scanRoots?: ScanRoot[];
@@ -34,6 +35,7 @@ export type AppState = {
   scan: { running: boolean; background?: boolean; count: number; directory: string; error: string | null };
   runtime: { mpvReady: boolean; version: string; desktop: boolean; fullscreen?: boolean; playerOverlay?: boolean; windowChrome?: boolean };
 };
+export type AppUpdate = {supported:boolean;phase:'idle'|'unsupported'|'checking'|'current'|'available'|'downloading'|'downloaded'|'installing'|'error';version:string|null;notes:string;percent:number;transferred:number;total:number;error:string|null;checkedAt:string|null};
 export type BaiduQuota = {loading: boolean; total: number | null; used: number | null; available: number | null; updatedAt: string | null; error: string | null};
 export type Account = { quota?: BaiduQuota; connected: boolean; configured: boolean; mode?: 'web' | 'oauth'; checking?: boolean; loginOpen?: boolean; authorizing?: boolean; authorizationError?: string | null; profile: Record<string, string | number> | null;
   sync?: {pulling: boolean; lastPulledAt?: string; positions?: number; watched?: number; remotePositions?: number; error?: string | null; warning?: string | null; watching?: {itemId: string; title: string; season?: number; episode?: number; expiresAt: string} | null}; };
@@ -49,6 +51,6 @@ export type DiscoveryMovie = {id:string;url:string;title:string;poster:string|nu
 export type DiscoveryProvider = 'baidu' | 'quark' | 'xunlei' | 'alipan' | 'unknown';
 export type DiscoveryDetail = {title:string;overview:string;poster:string|null;resources:{id:string;title:string;provider:DiscoveryProvider}[]};
 export type DiscoveryWork = {title:string;originalTitle?:string;kind:'movie'|'episode';year?:number;season?:number;selection?:{source:'tmdb';id:string;kind:'movie'|'episode'}};
-export type NamingPreview = {total:number;renamed:number;skipped:number;files:{original:string;name:string;reason:string}[]};
+export type NamingPreview = {total:number;renamed:number;skipped:number;files:{original:string;name:string;reason:string;directory?:string}[]};
 export type SharePreview = {handle:string;files:CloudFile[];directory:string;page:number;hasMore:boolean;work?:DiscoveryWork};
 export type TransferTask = {id:string;title:string;status:string;message:string;target:string;count:number;at:string;canCheck:boolean};

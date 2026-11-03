@@ -26,7 +26,7 @@ app.whenReady().then(async()=>{
     }
     if(method==='discovery:detail') value={title:'硅谷 第四季',overview:'理想与现实之间，总有新的故事。选择版本后，将影片保存到自己的云端影院。',poster:null,resources:[...Array.from({length:14},(_,index)=>({id:'r'+index,title:'硅谷 第四季 · 1080P · 中英字幕 · 资源 '+(index+1),provider:'baidu'})),{id:'quark1',title:'夸克版本 1',provider:'quark'},{id:'quark2',title:'夸克版本 2',provider:'quark'},{id:'xunlei1',title:'迅雷版本',provider:'xunlei'},{id:'unknown1',title:'未标注版本',provider:'unknown'}]};
     if(method==='discovery:preview') value={handle:'preview',work:{title:'硅谷',kind:'episode',season:4,year:2014},directory:'/',page:1,hasMore:false,files:[{fs_id:'100',server_filename:'硅谷 第四季',path:'/Silicon.Valley',isdir:1,size:0}]};
-    if(method==='discovery:naming'){await wait(100);value={total:1,renamed:1,skipped:0,files:[{original:'Silicon.Valley.S04E03.mkv',name:'硅谷 - S04E03.mkv',reason:''}]};}
+    if(method==='discovery:naming'){await wait(100);value={total:110,renamed:109,skipped:1,files:[{original:'Silicon.Valley.S04E03.mkv',name:'硅谷 - S04E03.mkv',reason:'',directory:'/Silicon.Valley'},...Array.from({length:108},(_,i)=>({original:`${i+4} 4K.mkv`,name:`硅谷 - S04E${i+4} - 2160p.mkv`,reason:'',directory:'/Silicon.Valley'})),{original:'第01-02集.mkv',name:'第01-02集.mkv',reason:'包含多集或多个集数，保留原名',directory:'/Silicon.Valley/待确认'}]};}
     if(method==='discovery:files') value={directory:'/Silicon.Valley',page:1,hasMore:false,files:[{fs_id:'101',server_filename:'Silicon.Valley.S04E03.mkv',path:'/Silicon.Valley/Silicon.Valley.S04E03.mkv',isdir:0,size:1024**3}]};
     if(method==='baidu:folders') value={files:[{fs_id:'300',server_filename:'电影',path:'/Movies',isdir:1,size:0}],hasMore:false,nextStart:1};
     if(method==='discovery:transfer') {state.discoveryTransfers=[{id:'job',status:'submitted',title:'硅谷 第四季',target:'/Movies',message:'百度正在保存文件',at:new Date().toISOString(),count:0,canCheck:true}];window.webContents.send('cloudreel:state',state);value=state.discoveryTransfers[0];}
@@ -76,6 +76,15 @@ app.whenReady().then(async()=>{
   assert.equal(await js("document.querySelector('.share-naming input[type=checkbox]').checked"),true);
   assert.equal(await js("document.querySelector('[aria-label=\"保存剧集季数\"]').value"),'4');
   await js("document.querySelector('.share-naming summary').click()");assert.equal(await js("document.querySelector('.share-naming-preview span').textContent"),'硅谷 - S04E03.mkv');
+  assert.equal(await js("document.querySelectorAll('.share-naming-preview>div').length"),20);
+  await js("document.querySelector('.share-naming-preview>.text-button').click()");assert.equal(await js("document.querySelectorAll('.share-naming-preview>div').length"),70);
+  await js("document.querySelector('.share-naming-preview>.text-button').click()");assert.equal(await js("document.querySelectorAll('.share-naming-preview>div').length"),110,'every file beyond the old 100-item cap can be inspected');
+  await js("document.querySelector('.share-naming-filter input').click()");assert.equal(await js("document.querySelectorAll('.share-naming-preview>div').length"),1);
+  assert.equal(await js("document.querySelector('.share-naming-preview del').textContent"),'第01-02集.mkv');assert.match(await js("document.querySelector('.share-naming-reason').textContent"),/多集/);
+  assert.equal(await js("document.querySelector('.share-naming-preview small').textContent"),'/Silicon.Valley/待确认');await capture('discovery-naming-uncertain.png');
+  window.setSize(980,680);await wait(100);await js("document.querySelector('.share-save-footer .primary').scrollIntoView({block:'nearest'})");
+  assert.equal(await js("(()=>{const r=document.querySelector('.share-save-footer .primary').getBoundingClientRect();return r.bottom<=innerHeight&&r.right<=innerWidth&&r.left>=0;})()"),true,'expanded preview keeps saving reachable in a small window');await capture('discovery-naming-small.png');window.setSize(1380,900);await wait(100);
+  await js("document.querySelector('.share-naming-filter input').click()");assert.equal(await js("document.querySelectorAll('.share-naming-preview>div').length"),20);
   await capture('discovery-naming.png');await js("document.querySelector('.share-naming summary').click()");
   assert.equal(await js("document.querySelector('.share-destination p').textContent"),'/Movies');assert.equal(await js("document.querySelector('.share-save-footer .primary').disabled"),false);await capture('discovery-save.png');
   window.setSize(980,720);await wait(100);

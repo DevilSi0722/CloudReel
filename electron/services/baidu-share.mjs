@@ -99,7 +99,7 @@ export class BaiduShareService {
   async naming({handle,fsIds,season}) {
     const entry=this.entry(handle),selected=this.selection(entry,fsIds);
     const plan=namingPlan(await this.selectedFiles(handle,selected),entry.work,{season});
-    return {total:plan.length,renamed:plan.filter(value=>!value.reason&&value.name!==value.original).length,skipped:plan.filter(value=>value.reason).length,files:plan.slice(0,100).map(({original,name,reason})=>({original,name,reason}))};
+    return {total:plan.length,renamed:plan.filter(value=>!value.reason&&value.name!==value.original).length,skipped:plan.filter(value=>value.reason).length,files:plan.map(({original,name,reason,sourcePath})=>({original,name,reason,directory:sourcePath.slice(0,sourcePath.lastIndexOf('/'))||'/'}))};
   }
   async transfer({handle,fsIds,target,mount = true,autoRename = false,season}) {
     if (!this.web.connected) throw new Error('请先登录百度网盘。');

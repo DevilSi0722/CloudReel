@@ -1,10 +1,9 @@
 import path from 'node:path';
 import {isVideo} from './media.mjs';
-import {baseSeriesTitle,mediaNumber,normalizeTitle} from './identification.mjs';
+import {baseSeriesTitle,normalizeTitle} from './identification.mjs';
+import {discoveryEpisode,namedSeason} from './discovery-episodes.mjs';
+export {namedSeason} from './discovery-episodes.mjs';
 
-const number='[零〇一二两三四五六七八九十百\\d]+';
-const seasonPattern=new RegExp(`第\\s*(${number})\\s*季|\\bSeason[ ._-]*(\\d{1,2})\\b|(?:^|[ ._\\[(])S(\\d{1,2})(?=$|[ ._\\])E])`,'i');
-export const namedSeason=value=>{const match=String(value||'').match(seasonPattern);return match?mediaNumber(match[1]??match[2]??match[3]):undefined;};
 const saneNumber=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
 export const safeName=value=>{let name=String(value||'').normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').replace(/[. ]+$/g,'').trim();while(Buffer.byteLength(name)>150)name=Array.from(name).slice(0,-1).join('');if(/^(?:CON|PRN|AUX|NUL|COM\d|LPT\d)$/i.test(name))name+='_';return name.trim();};
 
@@ -19,30 +18,12 @@ export function discoveryWork(snapshot) {
   return {title:safeName(title),originalTitle:kind==='episode'?baseSeriesTitle(original):original,kind,year,season:kind==='episode'?season:undefined,episodeCount:episodes};
 }
 
-function episodeIdentity(file,work,seasonOverride) {
-  const stem=path.posix.basename(file.path).replace(/\.[^.]+$/,''),parts=file.path.split('/').slice(0,-1);
-  if(/(?:E\d{1,3}\s*[-~至&+]?\s*E\d|E\d{1,3}\s*[-~至]\s*\d|第\s*\d+\s*[-~至]\s*\d+\s*集)/i.test(stem))return null;
-  const standard=stem.match(/S(\d{1,2})[ ._-]*E(\d{1,3})|(\d{1,2})x(\d{1,3})/i);
-  const cn=stem.match(new RegExp(`第\\s*(${number})\\s*[集话話回]`));
-  const code=stem.match(/(?:^|[\s._[(-])(?:EP?|Episode)[ ._-]*(\d{1,3})(?=$|[\s._\])\-])/i);
-  const suffix=stem.match(/^(.*?[\u3400-\u9fff])\s*(\d{1,3})$/);
-  const brackets=[...stem.matchAll(/[\[【](\d{1,3})(?:v\d)?[\]】]/gi)];
-  const numeric=stem.match(/^\s*(\d{1,3})(?:\s*[-._ ]\s*\D.*)?$/)||(brackets.length===1?brackets[0]:null)||(suffix&&normalizeTitle(suffix[1])===normalizeTitle(work.title)?[suffix[0],suffix[2]]:null);
-  const episode=standard?Number(standard[2]??standard[4]):cn?mediaNumber(cn[1]):Number(code?.[1]??numeric?.[1]);
-  const explicit=standard?Number(standard[1]??standard[3]):namedSeason(stem)??[...parts].reverse().map(namedSeason).find(value=>value!==undefined);
-  const special=parts.some(value=>/^(?:specials?|特别篇|番外|OVA|SP)$/i.test(value));
-  const expected=work.season;
-  if(explicit!==undefined&&expected!==undefined&&explicit!==expected&&!special)return null;
-  const season=special?0:explicit??seasonOverride??expected??1;
-  if(work.episodeCount&&episode>work.episodeCount&&season!==0)return null;
-  return saneNumber(episode,1,999)&&saneNumber(season,0,99)?{season,episode}:null;
-}
-
 const excluded=file=>/(?:^|[\/ ._\[（(-])(?:sample|trailer|teaser|extras?|featurettes?|花絮|预告(?:片)?|特典|采访|制作特辑)(?=$|[\/ ._\]）)-])/i.test(file.path);
 const collection=file=>/合集|全[一二三四五六七八九十\d]+季|[1-9一二三四五六七八九]+\s*[-~至]\s*[1-9一二三四五六七八九]+\s*季|电影集合|collection|complete.series/i.test(file.path);
 export function quality(filename) {
+  filename=String(filename).normalize('NFKC').replace(/_/g,' ');
   const tokens=[];
-  for(const [pattern,value] of [[/\b2160p\b|\b4K\b/i,'2160p'],[/\b1080[pi]\b/i,'1080p'],[/\b720p\b/i,'720p'],[/\bBluRay\b|蓝光/i,'BluRay'],[/\bWEB[ ._-]?DL\b/i,'WEB-DL'],[/\bREMUX\b/i,'REMUX'],[/\b(?:DV|DOVI)\b|Dolby.Vision/i,'DV'],[/\bHDR10\+\b/i,'HDR10+'],[/\bHDR\b/i,'HDR'],[/\bx265\b|\bHEVC\b/i,'HEVC'],[/\bx264\b|\bAVC\b/i,'AVC']])if(pattern.test(filename))tokens.push(value);
+  for(const [pattern,value] of [[/\b2160p\b|\b4K\b/i,'2160p'],[/\b1080[pi]\b/i,'1080p'],[/\b720p\b/i,'720p'],[/\bBluRay\b|蓝光/i,'BluRay'],[/\bWEB[ ._-]?DL\b/i,'WEB-DL'],[/\bREMUX\b/i,'REMUX'],[/\b(?:DV|DOVI)\b|Dolby.Vision/i,'DV'],[/\bHDR10\+(?!\w)/i,'HDR10+'],[/\bHDR(?:10)?(?![\w+])/i,'HDR'],[/\bx265\b|\bHEVC\b/i,'HEVC'],[/\bx264\b|\bAVC\b/i,'AVC']])if(pattern.test(filename))tokens.push(value);
   const part=filename.match(/(?:^|[ ._-])(?:CD|Part|Disc)[ ._-]*(\d{1,2})(?=[ ._-]|$)/i);if(part)tokens.unshift('CD'+part[1]);
   return tokens.length?' - '+tokens.join(' '):'';
 }
@@ -59,7 +40,7 @@ export function namingPlan(files,work,{season}={}) {
     let identity=null,reason='';
     if(!supported)reason='缺少作品信息';
     else if(excluded(file)||collection(file))reason='合集或附加内容保留原名';
-    else if(work.kind==='episode'){identity=episodeIdentity(file,work,season);if(!identity)reason='无法确认季集，保留原名';}
+    else if(work.kind==='episode'){const result=discoveryEpisode(file,work,season);identity=result.identity;reason=result.reason||'';}
     else if(/S\d{1,2}[ ._-]*E\d{1,3}|第[零一二三四五六七八九十\d]+集/i.test(file.server_filename))reason='疑似剧集，保留原名';
     else if(features.length>1&&![work.title,work.originalTitle].filter(Boolean).some(value=>normalizeTitle(file.server_filename).includes(normalizeTitle(value))))reason='包含多个影片，保留原名';
     else identity={};
@@ -68,6 +49,11 @@ export function namingPlan(files,work,{season}={}) {
     const name=reason?file.server_filename:stem+quality(file.server_filename)+extension;
     plans.push({sourceId:String(file.fs_id),sourcePath:file.path,original:file.server_filename,name,reason,identity:reason?null:{title:work.title,year:work.year,kind:work.kind,...identity},size:file.size});
   }
+  // Allocate collisions in the preview too, so versions and their subtitles
+  // have the same proposed names before and after saving.
+  const reserved=new Map();
+  for(const file of files){const directory=path.posix.dirname(file.path);if(!reserved.has(directory))reserved.set(directory,[]);reserved.get(directory).push(file.server_filename);}
+  for(const plan of plans.filter(value=>!value.reason)){const names=reserved.get(path.posix.dirname(plan.sourcePath));plan.name=availableName(plan.name,names,plan.original);names.push(plan.name);}
   const videoPlans=[...plans];
   for(const file of files.filter(file=>!file.isdir&&subtitle.test(file.server_filename))) {
     const matches=videoPlans.filter(plan=>!plan.reason&&path.posix.dirname(plan.sourcePath)===path.posix.dirname(file.path)&&file.server_filename.toLowerCase().startsWith(plan.original.slice(0,-path.posix.extname(plan.original).length).toLowerCase()+'.'));

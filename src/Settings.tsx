@@ -2,7 +2,7 @@ import {useRef, useState, type ReactNode, type RefObject} from 'react';
 import {Check, ChevronDown, Cloud, Film, Folder, Gauge, LoaderCircle, Plus, RefreshCw, Settings2, SlidersHorizontal, Trash2} from 'lucide-react';
 import type {AppState, PlaybackDefaults} from './types';
 import {Toggle, type Run} from './ui';
-import BrandMark from './BrandMark';
+import AppUpdates from './AppUpdates';
 import {BaiduFolderPicker} from './Sources';
 import WatchSyncSettings from './WatchSyncSettings';
 
@@ -37,7 +37,7 @@ export default function Settings({state, run, connectBaidu, connectTrakt, metada
       <SettingsSection title="影视目录" description="管理网盘挂载与本地文件夹" icon={<Folder size={20} />} status={`${state.scanRoots?.length ?? 0} 个目录`}><ScanFolders state={state} run={run} /></SettingsSection>
       <SettingsSection title="高级设置" description="播放器路径与网盘接入方式" icon={<SlidersHorizontal size={20} />} status={state.runtime.mpvReady ? '播放器已就绪' : '待配置播放器'}><AdvancedSettings state={state} run={run} /></SettingsSection>
     </div>
-    <div className="about-row"><BrandMark small /><span>云映 <small>CloudReel {state.runtime.version}</small></span></div>
+    <AppUpdates state={state} run={run}/>
   </div>;
 }
 

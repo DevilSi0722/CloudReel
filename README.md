@@ -106,15 +106,20 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 | `npm run verify:playback` | 隔离正式会话，在隐藏窗口验证真实百度网盘电影与剧集播放 |
 | `npm run verify:playback -- --mounts` | 用真实网盘片源验证文件夹挂载与改名后的播放恢复 |
 | `npm run verify:seedhub -- --share-api` | 在隐藏窗口只读验证 SeedHub 列表、资源来源与百度分享 |
-| `npm run dist` | 打包 Windows x64 便携版 |
+| `npm run dist` | 打包支持软件内更新的 Windows x64 安装版 |
+| `npm run dist:portable` | 可选打包免安装便携版 |
+| `npm run verify:updates` | 隔离安装、损坏校验、覆盖升级与重启验收 |
+| `npm run validate:updates` | 核对安装包、更新描述与差分文件 |
 
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-0.3.22-win-x64.exe
+release/CloudReel-Setup-0.3.22-win-x64.exe
+release/CloudReel-Setup-0.3.22-win-x64.exe.blockmap
+release/latest.yml
 ```
 
-便携版包含所需运行库，使用者无需安装 Node.js。构建产物不提交到源码仓库，可通过 GitHub Releases 分发。
+安装版包含所需运行库，使用者无需安装 Node.js。设置底部可检查更新，后台下载完成后由用户选择重启安装；从旧便携版换装一次即可沿用原资料。构建产物不提交到源码仓库，发布时将安装包、差分文件与 `latest.yml` 一起上传 GitHub Releases，后续使用更高版本号。详见 [Windows 安装与更新](docs/APP-UPDATES.md)。
 
 ### 项目结构
 

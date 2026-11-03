@@ -1,0 +1,15 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url)),require=createRequire(import.meta.url),yaml=require('js-yaml');
+const pkg=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')),directory=path.join(root,'release'),name=`CloudReel-Setup-${pkg.version}-win-x64.exe`;
+const info=yaml.load(await fs.readFile(path.join(directory,'latest.yml'),'utf8'));
+if(info.version!==pkg.version||info.files?.length!==1||info.files[0].url!==name||info.path!==name)throw Error('更新描述与当前安装包不匹配。');
+const bytes=await fs.readFile(path.join(directory,name)),sha512=createHash('sha512').update(bytes).digest('base64');
+if(info.files[0].sha512!==sha512||info.sha512!==sha512||info.files[0].size!==bytes.length)throw Error('安装包校验值或大小不匹配。');
+await fs.access(path.join(directory,name+'.blockmap'));
+const feed=yaml.load(await fs.readFile(path.join(directory,'win-unpacked/resources/app-update.yml'),'utf8'));
+if(feed.provider!=='github'||feed.owner!=='DevilSi0722'||feed.repo!=='CloudReel')throw Error('更新源配置不匹配。');
+console.log(JSON.stringify({passed:true,version:pkg.version,installer:name,sha512Verified:true,blockmapPresent:true,githubFeedVerified:true}));

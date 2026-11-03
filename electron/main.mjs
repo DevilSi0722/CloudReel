@@ -22,6 +22,8 @@ import {MediaProbeService} from './services/media-probe.mjs';
 import {LibraryScanner} from './services/scanner.mjs';
 import {LibraryRefresh} from './services/library-refresh.mjs';
 import {FileManagementService} from './services/file-management.mjs';
+import {createAppUpdater} from './services/app-update-runtime.mjs';
+import {UPDATE_RELEASES} from './services/app-updater.mjs';
 import {BaiduQuotaMonitor} from './services/baidu-quota.mjs';
 import {DiscoveryService} from './services/discovery.mjs';
 import {DiscoveryBrowser} from './services/discovery-browser.mjs';
@@ -44,7 +46,7 @@ if (process.env.CLOUDREEL_DEBUG_PORT && !app.isPackaged) { app.commandLine.appen
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
   app.whenReady().then(async () => {
-  let window, controls, quitting = false, auth = null;
+  let window, controls, updates, quitting = false, auth = null;
   const store = new Store(app.getPath('userData'), safeStorage);
   if (fs.existsSync(store.file) && !fs.existsSync(store.file + '.before-0.3')) fs.copyFileSync(store.file, store.file + '.before-0.3');
   identifyLibrary(store.data.items); store.persist();
@@ -60,7 +62,7 @@ else {
     state.accounts.trakt.configured = trakt.configured();
     Object.assign(state.accounts.trakt, traktLogin.status());
     state.accounts.trakt.sync = sync.status();
-    return { ...state, fileTask: fileManager.status(), discoveryTransfers: transfers.status(), collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
+    return { ...state, update: updates?.status(), fileTask: fileManager.status(), discoveryTransfers: transfers.status(), collections: groupLibrary(store.data.items), scrape: metadata.status(), player: player.status(), scan: scanner.state, mediaProbes: mediaProbe.states, runtime: { mpvReady: Boolean(resolveMpv()), version: app.getVersion(), desktop: true, playerOverlay: true, windowChrome: process.platform === 'win32', fullscreen: Boolean(window?.isFullScreen()) } };
   };
   let notifyTimer;
   const notify = () => {
@@ -120,8 +122,13 @@ else {
     begin: async () => {scanner.suspended = true; mediaProbe.cancel(); metadata.cancel(); await metadata.activeRun;},
     end: () => {scanner.suspended = false; scrapeLater(false, true);}
   });
+  updates=createAppUpdater({app,testChannel,notify,
+    blocked:()=>Boolean(quitting||player.session||player.opening||scanner.state.running||transfers.busy||fileManager.busy||sync.flushing||sync.pulling),
+    prepare:async()=>{scanner.suspended=true;metadata.cancel();await metadata.activeRun;store.persist();},
+    resume:()=>{scanner.suspended=false;scrapeLater(false,true);}
+  });
   function scrapeLater(refresh = false, background = false) {
-    if(!store.data.settings.autoScrape || quitting) return;
+    if(!store.data.settings.autoScrape || quitting || updates?.installing) return;
     void metadata.schedule({refresh, background});
   }
   function requireIdle() { if (player.session || player.opening || scanner.state.running || sync.flushing || transfers.busy || fileManager.busy) throw new Error('请等待当前播放、扫描、文件处理、保存或同步操作结束，再修改账号及播放器设置。'); }
@@ -140,6 +147,9 @@ else {
   }
   const handlers = {
     'state': () => snapshot(),
+    'update:check':()=>updates.check(),
+    'update:install':()=>updates.install(),
+    'update:releases':()=>openExternal(UPDATE_RELEASES),
     'discovery:catalog': input => discovery.catalog(input),
     'discovery:detail': id => discovery.detail(id),
     'discovery:preview': async input => {const url = await discovery.resolve(input?.id); return transfers.inspect(url, typeof input?.title === 'string' ? input.title : '',discovery.work(input?.id));},
@@ -325,6 +335,7 @@ else {
     if (overlaySender && !overlayMethods.has(method) || !overlaySender && method === 'player:overlayRegions') return {ok: false, error: '无效的播放器调用。'};
     try {
       if (typeof method !== 'string' || !Object.hasOwn(handlers, method)) throw new Error('不支持的操作。');
+      if(updates.installing&&method!=='state')throw new Error('正在准备重启更新，请稍候。');
       if (fileManager.busy && /^(?:settings:save|library:(?:removeRoot|importBaidu|importLocal|identify|remove)|metadata:(?:match|refresh)|trakt:match|discovery:check)$/.test(method)) throw new Error('请等待网盘文件操作完成。');
       return { ok: true, value: await handlers[method](payload) };
     } catch (error) { return { ok: false, error: error.message || '操作失败，请重试。' }; }
@@ -358,16 +369,17 @@ else {
   app.on('second-instance', () => { if (window.isMinimized()) window.restore(); window.focus(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', event => {
-    if (quitting) return; event.preventDefault(); quotaMonitor.stop();discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
+    if (quitting) return; event.preventDefault(); updates.stop();quotaMonitor.stop();discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
     void player.stop().catch(() => {}).then(() => thumbnails.reset()).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
   });
-  const retryTimer = setInterval(() => { void sync.flush(); }, 60000); retryTimer.unref();
-  const pullTimer = setInterval(() => { if (!quitting) void sync.pull(); }, 30000); pullTimer.unref();
-  window.on('focus', () => { if (!quitting) void quotaMonitor.refresh(); if (!quitting && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });
+  const retryTimer = setInterval(() => {if(!quitting&&!updates.installing)void sync.flush();}, 60000); retryTimer.unref();
+  const pullTimer = setInterval(() => { if (!quitting&&!updates.installing) void sync.pull(); }, 30000); pullTimer.unref();
+  window.on('focus', () => { if (!quitting&&!updates.installing) void quotaMonitor.refresh(); if (!quitting&&!updates.installing && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });
   void sync.flush();
   void sync.pull();
   libraryRefresh.start();
   quotaMonitor.start();
+  updates.start();
   if (usingWebBaidu()) void webLogin.restore().then(() => libraryRefresh.startup()).catch(() => {});
   scrapeLater(false, true);
   }).catch(error => { console.error('CloudReel startup failed:', error.message); dialog.showErrorBox('云映启动失败', error.message); app.exit(1); });

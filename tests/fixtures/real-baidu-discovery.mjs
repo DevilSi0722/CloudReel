@@ -94,16 +94,24 @@ app.whenReady().then(async()=>{
     const alias='CloudReel-Naming-Check-'+Date.now()+path.posix.extname(original.server_filename);
     restoreName=async()=>{const current=await login.service.fileInfo(original.fs_id);if(current.path.startsWith(TARGET+'/')&&current.server_filename!==original.server_filename)await login.service.renameFile(current,original.server_filename);};
     const temporary=await login.service.renameFile(original,alias);
-    const source={...original,fs_id:'900',isdir:0,path:'/share/'+original.server_filename};
-    const work={title:item.title,kind:item.kind,year:item.year,season:item.season};
-    const plan=namingPlan([source],work);
-    if(plan.length!==1||plan[0].reason){progress({namingPlan:{kind:work.kind,season:work.season,reason:plan[0]?.reason,extension:path.posix.extname(original.server_filename),explicitEpisode:/S\d+E\d+/i.test(original.server_filename),collection:/合集|collection/i.test(original.server_filename)}});throw new Error('unrecognized test file');}
-    const job={target:TARGET,targetFsId:String(destination.fs_id),copyReceipt:[{fsId:String(temporary.fs_id),sourceId:'900'}],naming:{beforeIds:before.files.filter(value=>String(value.fs_id)!==String(original.fs_id)).map(value=>String(value.fs_id)),roots:[source],plan,results:[]}};
-    const result=await organizeSavedCopies(job,login.service,async()=>{if(!login.service.connected)throw Error('session');});
-    if(result.counts.renamed!==1||result.identities.length!==1)throw Error('normalization failed');
-    await scanner.importBaiduDirectory(TARGET,{identities:result.identities});
-    if(store.data.items.find(value=>value.id===item.id)?.title!==work.title)throw Error('identity not retained');
-    summary.naming={productionRename:true,normalized:result.counts.renamed,identityRetained:true};progress({namingVerified:true});
+    const work={title:item.title,kind:item.kind,year:item.year,season:item.season},extension=path.posix.extname(original.server_filename);
+    const cases=[{filename:original.server_filename,work},...['01 4K','05-4K','09~4K'].map((name,index)=>({filename:name+extension,work:{title:'CloudReel命名验收',kind:'episode',season:1,episodeCount:30},episode:[1,5,9][index]}))];
+    for(const test of cases) {
+      const source={...original,server_filename:test.filename,fs_id:'900',isdir:0,path:'/share/'+test.filename};
+      const plan=namingPlan([source],test.work);
+      if(plan.length!==1||plan[0].reason)throw new Error('unrecognized test file');
+      if(test.episode&&plan[0].identity.episode!==test.episode)throw new Error('wrong episode');
+      const job={target:TARGET,targetFsId:String(destination.fs_id),copyReceipt:[{fsId:String(temporary.fs_id),sourceId:'900'}],naming:{beforeIds:before.files.filter(value=>String(value.fs_id)!==String(original.fs_id)).map(value=>String(value.fs_id)),roots:[source],plan,results:[]}};
+      const result=await organizeSavedCopies(job,login.service,async()=>{if(!login.service.connected)throw Error('session');});
+      if(result.counts.renamed!==1||result.identities.length!==1)throw Error('normalization failed');
+      // Each case represents a fresh save. Rebuild only this isolated in-memory
+      // item so a previous case's intentionally locked identity stays protected.
+      store.data.items=store.data.items.filter(value=>value.id!==item.id);
+      await scanner.importBaiduDirectory(TARGET,{identities:result.identities});
+      const saved=store.data.items.find(value=>value.id===item.id);
+      if(saved?.title!==test.work.title||test.episode&&saved.episode!==test.episode)throw Error('identity not retained');
+    }
+    summary.naming={productionRename:true,normalized:cases.length,qualitySeparatorCases:3,identityRetained:true};progress({namingVerified:true});
   }
   stage='playback';host=new NativeVideoHost(()=>window,()=>1);host.layout({x:0,y:0,width:1280,height:800});
   player=new PlayerService(store,login.service,{}, {eligible:()=>false,start:async()=>{},checkpoint:async()=>{}},{resolveMpv:()=>discoverMpv('',resources,root),videoHost:host,inputConfig:path.join(process.env.CLOUDREEL_PACKAGE_ROOT?path.join(resources,'player'):path.join(root,'electron'),'player-keys.conf'),spawnPlayer:(binary,args,options)=>{const quiet=[...args];quiet.splice(quiet.indexOf('--'),0,'--mute=yes');return spawn(binary,quiet,options);}});

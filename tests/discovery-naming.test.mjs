@@ -37,6 +37,54 @@ test('unknown episodes, conflicting seasons, multi-episode files, collections an
   assert.equal(namingPlan([file('01.mkv','10','/Specials')],show)[0].name,'硅谷 - S00E01.mkv');
 });
 
+test('actual Jia Jin Chai transfer names normalize every episode despite space, dash and tilde quality separators',()=>{
+  const names=['01 4K.mkv','02 4K.mp4','03 4K.mp4','04 4K.mp4','05-4K.mp4','06-4K.mkv','07-4K.mp4','08 4K.mkv',...Array.from({length:14},(_,i)=>`${String(i+9).padStart(2,'0')}~4K.mp4`),'S01E23 1080p.mp4'];
+  const plan=namingPlan(names.map((name,i)=>file(name,String(i+1))),{title:'嫁金钗',kind:'episode',year:2026,episodeCount:40});
+  assert.equal(plan.length,23);assert.ok(plan.every(value=>!value.reason));
+  for(let i=0;i<plan.length;i++){assert.equal(plan[i].identity.episode,i+1);assert.equal(plan[i].name,`嫁金钗 - S01E${String(i+1).padStart(2,'0')} - ${i===22?'1080p':'2160p'}${i===0||i===5||i===7?'.mkv':'.mp4'}`);}
+});
+
+test('title aliases, full-width digits, release tags and Chinese episodes retain the same correct identity',()=>{
+  const work={title:'庆余年',originalTitle:'Joy of Life',namingTitles:['庆余年 第二季'],kind:'episode',season:2,episodeCount:36};
+  const names=['庆余年 第三集 4K.mkv','庆余年03.1080p.WEB-DL.mkv','Joy.of.Life.04.2160p.mkv','庆余年 第二季05~4K.mkv','ＥＰ０６ ４Ｋ.MP4','【字幕组】庆余年[07v2][1080p].mkv','八.mkv','09集 4K.mkv'];
+  const plan=namingPlan(names.map((name,i)=>file(name,String(i+1))),work);
+  assert.deepEqual(plan.map(value=>value.identity?.episode),[3,3,4,5,6,7,8,9]);
+  assert.ok(plan.every(value=>value.identity.season===2));assert.match(plan[4].name,/2160p\.MP4$/);
+  assert.equal(namingPlan([file('9号秘事03 4K.mkv')],{title:'9号秘事',kind:'episode'})[0].identity.episode,3);
+  assert.equal(namingPlan([file('庆余年2 03 4K.mkv')],{title:'庆余年2',kind:'episode'})[0].identity.episode,3);
+  assert.equal(namingPlan([file('01_4K_HDR10+_x265.mkv')],work)[0].name,'庆余年 - S02E01 - 2160p HDR10+ HEVC.mkv');
+  assert.equal(namingPlan([file('02_1080p_WEB-DL_DDP5.1_H265.mkv')],work)[0].identity.episode,2);
+});
+
+test('ranges, split episodes, contradictory tags and numeric noise cannot become a single guessed episode',()=>{
+  for(const name of ['01-02.mkv','01~02 4K.mkv','EP01-02.mkv','1x01-02.mkv','S04E01E02.mkv','第一至二集.mkv','第1集-第2集.mkv','第03集（上）.mkv','第03集上.mkv','S04E03.Part1.mkv','S04E03 EP04.mkv','[03][04].mkv','01 02.mkv','1080p.mkv','4K.mkv','2026.mkv','嫁金钗第03集预告.mp4']){
+    const value=namingPlan([file(name)],{title:'嫁金钗',kind:'episode',season:4})[0];assert.ok(value.reason,name);assert.equal(value.name,name);assert.equal(value.identity,null);
+  }
+  assert.match(namingPlan([file('S04E11.mkv')],{...show,episodeCount:10})[0].reason,/范围/);
+});
+
+test('season evidence is cross-checked, defaults never override explicit seasons and collections stay intact',()=>{
+  assert.match(namingPlan([file('S04E03.mkv','10','/Season 3')],show)[0].reason,/季数冲突/);
+  assert.match(namingPlan([file('S04E03.mkv','10','/Specials')],show)[0].reason,/特别篇/);
+  assert.match(namingPlan([file('03~4K.mkv','10','/硅谷1-6季合集/Season 4')],show)[0].reason,/合集/);
+  assert.match(namingPlan([file('S04E03.mkv','10','/电视剧合集')],show)[0].reason,/合集/);
+  assert.equal(namingPlan([file('03~4K.mkv','10','/Season 4')],show,{season:9})[0].identity.season,4);
+});
+
+test('preview allocates same-episode versions and keeps each subtitle attached to its exact video',()=>{
+  const plan=namingPlan([file('03.mkv'),file('EP03.mkv','11'),file('03.chs.srt','12'),file('EP03.chs.srt','13')],show);
+  assert.equal(plan[0].name,'硅谷 - S04E03.mkv');assert.equal(plan[1].name,'硅谷 - S04E03 - 版本 2.mkv');
+  assert.equal(plan[2].name,'硅谷 - S04E03.chs.srt');assert.equal(plan[3].name,'硅谷 - S04E03 - 版本 2.chs.srt');
+});
+
+test('naming preview includes entries after the old 100-file truncation with their directory and skip reason',async()=>{
+  const store=memoryStore(),service=new BaiduShareService({store,web:{},browserSession:{}});
+  const files=Array.from({length:110},(_,i)=>file(i===109?'unknown.mkv':`${String(i+1).padStart(3,'0')} 4K.mkv`,String(i+1)));
+  service.handles.set('preview',{work:show,files:new Map(files.map(file=>[file.fs_id,file])),at:Date.now()});
+  const result=await service.naming({handle:'preview',fsIds:files.map(file=>file.fs_id)});
+  assert.equal(result.files.length,110);assert.equal(result.files[109].original,'unknown.mkv');assert.ok(result.files[109].reason);assert.equal(result.files[109].directory,'/share');
+});
+
 test('movie names include year, subtitles follow their video, and mixed films are never relabelled as one',()=>{
   const work={title:'星际穿越',kind:'movie',year:2014};
   const plan=namingPlan([file('abc.2160p.mkv'),file('abc.2160p.chs.ass','11'),file('abc.2160p.chs.srt','12'),file('abc.2160p.eng.srt','13')],work);
@@ -93,7 +141,7 @@ test('successful normalization feeds trusted identities into scoped ingestion wi
 test('metadata naming uses a unique confident TMDB match and leaves ambiguous titles unchanged',async()=>{
   const service=new MetadataService(memoryStore(),{},{tmdbToken:'test'});
   service.search=async()=>[{source:'tmdb',id:'60573',kind:'episode',title:'硅谷',originalTitle:'Silicon Valley',year:2014,voteCount:100}];
-  const work=await service.discoveryWork(show);assert.equal(work.selection.id,'60573');assert.equal(work.year,2014);
+  const work=await service.discoveryWork(show);assert.equal(work.selection.id,'60573');assert.equal(work.year,2014);assert.ok(work.namingTitles.includes(show.title));
   service.search=async()=>[{source:'tmdb',id:'1',kind:'movie',title:'Same',year:2000,voteCount:100},{source:'tmdb',id:'2',kind:'movie',title:'Same',year:2020,voteCount:100}];
   assert.equal((await service.discoveryWork({title:'Same',kind:'movie'})).selection,undefined);
 });

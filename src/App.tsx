@@ -8,6 +8,7 @@ import Sources from './Sources';
 import Details, { MetadataMatch } from './Details';
 import MetadataSettings from './MetadataSettings';
 import Settings from './Settings';
+import {UpdateNotice} from './AppUpdates';
 import Player from './Player';
 import PlayerViewport from './PlayerViewport';
 import BrandMark from './BrandMark';
@@ -24,6 +25,7 @@ export default function App() {
   const [busy, setBusy] = useState(0), [toast, setToast] = useState<{text: string; error: boolean} | null>(null);
   const [selected, setSelected] = useState<{ids: string[]; itemId?: string} | null>(null), [matching, setMatching] = useState<string[] | null>(null), [traktMatch, setTraktMatch] = useState<MediaItem | null>(null);
   const [traktOpen, setTraktOpen] = useState(false);
+  const [dismissedUpdate,setDismissedUpdate]=useState<string|null>(null);
   const [addOpen, setAddOpen] = useState(false), [baiduAuth, setBaiduAuth] = useState<BaiduAuth | null>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { void bridge.invoke<AppState>('state').then(setState).catch(error => setToast({text: error.message, error: true})); return bridge.onState(setState); }, []);
@@ -49,6 +51,7 @@ export default function App() {
     <aside className="sidebar"><button className="brand" onClick={() => navigate('home')}><BrandMark /><span>云映<small>CloudReel</small></span></button><span className="nav-label">资料库</span><nav aria-label="资料库导航">{([{id: 'home', icon: Home, name: '现在观看'}, {id: 'movies', icon: Film, name: '电影'}, {id: 'shows', icon: Tv, name: '剧集'}, {id: 'favorites', icon: Heart, name: '收藏'}, {id: 'discovery', icon: Compass, name: '发现'}] as const).map(({id, icon: Icon, name}) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={18} /><span>{name}</span>{(id === 'movies' || id === 'shows') && <small>{state.collections.filter(group => group.kind === (id === 'movies' ? 'movie' : 'episode')).length || ''}</small>}</button>)}</nav><span className="nav-label source-label">我的来源</span><button className={`nav-item ${view === 'sources' ? 'active' : ''}`} onClick={() => navigate('sources')}><Cloud size={18} /><span>百度网盘</span>{state.accounts.baidu.connected && <i className="status-dot" />}</button><button className="nav-item nav-add" onClick={() => setAddOpen(true)}><Plus size={17} /><span>添加媒体</span></button><div className="sidebar-bottom"><button className="nav-item" aria-label="刷新片库" title={state.scanRoots?.some(root => root.enabled !== false) ? '刷新所有已挂载的影视目录' : '请先添加影视目录'} disabled={!state.scanRoots?.some(root => root.enabled !== false) || visibleScan} onClick={() => run('library:refresh')}><RefreshCw size={17} className={visibleScan ? 'spin' : ''} /><span>刷新片库</span></button><button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}><Settings2 size={18} /><span>设置</span></button><div className="sidebar-version">CloudReel <span>{state.runtime.version}</span></div></div></aside>
     <main className="main-area"><header className="topbar"><span>{details ? details.title : ['home', 'movies', 'shows', 'favorites'].includes(view) ? '' : titles[view]}</span><div className="topbar-actions"><label className="search-box"><Search size={15} /><input ref={input} aria-label={view === 'discovery' ? '搜索片源' : '搜索片库'} placeholder={view === 'discovery' ? '搜索片源' : '搜索片库'} value={query} onChange={e => {setQuery(e.target.value); setSelected(null); if (!['home', 'movies', 'shows', 'favorites', 'discovery'].includes(view)) setView('home');}} /><kbd>/</kbd></label><button className="icon-button" aria-label="添加媒体" onClick={() => setAddOpen(true)}><Plus size={21} /></button></div></header>
     <div className={`content view-${view} ${details ? 'detail-content' : ''}`}>
+      {view!=='settings'&&!state.player&&state.update?.phase==='downloaded'&&state.update.version&&dismissedUpdate!==state.update.version&&<UpdateNotice version={state.update.version} onOpen={()=>navigate('settings')} onDismiss={()=>setDismissedUpdate(state.update!.version)}/>}
       {!state.runtime.desktop && <div className="preview-note">界面预览 · 连接账号与播放请使用桌面版</div>}
       {details ? <Details key={selected?.ids[0] ?? details.id} group={details} initialItemId={selected?.itemId} state={state} run={run} onBack={() => transitionPage(() => setSelected(null), Boolean(state.player))} onMatch={setMatching} onTrakt={setTraktMatch} onWatch={onWatch} /> : <>
       {(view === 'home' || view === 'movies' || view === 'shows' || view === 'favorites') && <LibraryView state={state} view={view} query={query} run={run} open={open} connectBaidu={connectBaidu} onWatch={onWatch} />}

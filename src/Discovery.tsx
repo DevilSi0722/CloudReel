@@ -16,6 +16,8 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
   const [target,setTarget] = useState<{path:string;fsId?:string}|null>(first ? {path:first.path,fsId:first.fsId} : null), [mount,setMount] = useState(true);
   const generation = useRef(0);
   const [autoRename,setAutoRename]=useState(true),[season,setSeason]=useState<number|undefined>(),[naming,setNaming]=useState<NamingPreview|null>(null),[namingLoading,setNamingLoading]=useState(false),[namingError,setNamingError]=useState('');
+  const [namingLimit,setNamingLimit]=useState(20),[onlyUncertain,setOnlyUncertain]=useState(false);
+  useEffect(()=>{setNamingLimit(20);setOnlyUncertain(false);},[naming]);
   useEffect(()=>{setSeason(preview?.work?.kind==='episode'?preview.work.season??1:undefined);},[preview?.handle]);
   useEffect(()=>{
     setNaming(null);setNamingError('');
@@ -49,6 +51,8 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
     finally {setSending(false);}
   };
   const task = saved && (state.discoveryTransfers?.find(value => value.id === saved.id) || saved);
+  const namingFiles=naming?.files.filter(file=>!onlyUncertain||file.reason)||[];
+  const multipleNamingDirectories=new Set(naming?.files.map(file=>file.directory)).size>1;
   if (picking) return <BaiduFolderPicker state={state} run={run} onClose={() => setPicking(false)} onSelect={location => {setTarget(location);setPicking(false);}}/>;
   return <Modal title={task ? working(task.status) ? '已提交保存' : '保存结果' : '保存到百度网盘'} wide className="discovery-save" onClose={onClose}>
     {task ? <div className="discovery-submitted"><span>{working(task.status) ? <LoaderCircle className="spin" size={28}/> : ['complete','saved'].includes(task.status) ? <Check size={28}/> : <Info size={28}/>}</span><h3>{task.message}</h3><p>保存记录会保留在发现页，你可以继续浏览。</p><button className="button primary" onClick={onClose}>继续浏览</button></div> : <>
@@ -65,7 +69,11 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
       {preview?.work?.title&&<section className="share-naming"><label className="discovery-mount"><input type="checkbox" checked={autoRename} disabled={sending} onChange={event=>setAutoRename(event.target.checked)}/>自动规范命名，便于匹配影片资料</label>{autoRename&&<>
         <p>{preview.work.title}{preview.work.kind==='movie'&&preview.work.year?` (${preview.work.year})`:''} · {preview.work.selection?'已匹配影片资料':'使用作品名称'}<span>保存到独立作品文件夹，无法确认的文件保留原名。</span></p>
         {preview.work.kind==='episode'&&<label className="share-season">无季数标记的文件归入<input aria-label="保存剧集季数" type="number" min={0} max={99} value={season??1} disabled={sending} onChange={event=>setSeason(Math.min(99,Math.max(0,Number(event.target.value))))}/>季</label>}
-        {namingLoading?<p role="status">正在生成命名预览…</p>:namingError?<p role="alert">{namingError} 可取消自动命名后保留原名保存。</p>:naming&&<details><summary>命名预览 · {naming.renamed} 项调整{naming.skipped?`，${naming.skipped} 项保留原名`:''}</summary><div className="share-naming-preview">{naming.files.slice(0,8).map((file,index)=><div key={index}><del>{file.original}</del><span>{file.reason||file.name}</span></div>)}{naming.total>8&&<p>其余 {naming.total-8} 项按相同规则处理</p>}</div></details>}
+        {namingLoading?<p role="status">正在生成命名预览…</p>:namingError?<p role="alert">{namingError} 可取消自动命名后保留原名保存。</p>:naming&&<details><summary>命名预览 · {naming.renamed} 项调整{naming.skipped?`，${naming.skipped} 项保留原名`:''}</summary>
+          {naming.skipped>0&&<label className="discovery-mount share-naming-filter"><input type="checkbox" checked={onlyUncertain} onChange={event=>{setOnlyUncertain(event.target.checked);setNamingLimit(20);}}/>只看保留原名的文件</label>}
+          <div className="share-naming-preview">{namingFiles.slice(0,namingLimit).map((file,index)=><div key={index}>{file.directory&&multipleNamingDirectories&&<small>{file.directory}</small>}<del>{file.original}</del><span className={file.reason?'share-naming-reason':undefined}>{file.reason||file.name}</span></div>)}
+          {namingFiles.length>namingLimit&&<button className="text-button" onClick={()=>setNamingLimit(value=>value+50)}>显示更多文件（已显示 {namingLimit} / {namingFiles.length}）</button>}</div>
+        </details>}
       </>}</section>}
       <label className="discovery-mount"><input type="checkbox" checked={mount} onChange={event => setMount(event.target.checked)} disabled={sending}/>持续挂载此目录，之后自动发现新影片</label>
       <div className="share-save-footer"><span>{selected.length ? `已选 ${selected.length} 项 · 重名文件保留副本` : '选择想保存的文件或文件夹'}</span>{state.accounts.baidu.connected ? <button className="button primary" disabled={!preview || !target || !selected.length || sending || !!(autoRename&&preview.work?.title&&(namingLoading||!naming)) || (state.discoveryTransfers || []).some(task => working(task.status))} onClick={() => void save()}>{sending ? <LoaderCircle size={16} className="spin"/> : <Download size={16}/>}保存并加入片库</button> : <button className="button primary" onClick={connect}><Cloud size={16}/>先登录百度网盘</button>}</div>

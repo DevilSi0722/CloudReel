@@ -31,7 +31,7 @@
 h1 {font-size:var(--type-title);letter-spacing:-.035em;line-height:1.25;}
 .heading-caption,.page-subtitle {font-size:var(--type-small);color:#9999a5;}
 .section-heading h2 {font-size:1.25rem;font-weight:600;letter-spacing:-.02em;}
-.section-heading>span,.section-heading .manage-hidden {font-size:var(--type-caption);color:#9999a5;}
+.section-heading>span {font-size:var(--type-caption);color:#9999a5;}
 .library-controls select,.library-filters select,.library-filters .text-button {font-size:var(--type-small);}
 .watch-tabs button {font-size:var(--type-small);padding:8px 16px;}
 .library-filter-bar {margin-bottom:28px;}
@@ -104,7 +104,7 @@ h1 {font-size:var(--type-title);letter-spacing:-.035em;line-height:1.25;}
 .modal {width:520px;max-width:100%;padding:28px;border-radius:20px;}
 .modal.wide {width:820px;}
 .modal-heading h2 {font-size:1.2rem;}
-.add-options strong,.match-result strong,.hidden-titles strong {font-size:var(--type-body);}
+.add-options strong,.match-result strong {font-size:var(--type-body);}
 .add-options small,.match-result small,.match-result p,.modal-bottom button {font-size:var(--type-small);}
 .library-menu {min-width:250px;}
 .library-menu>button {font-size:var(--type-small);padding:12px;}

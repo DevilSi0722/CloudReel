@@ -63,7 +63,10 @@ app.whenReady().then(async () => {
     assert.equal(await js("document.querySelector('[aria-label=\"刷新片库\"]').disabled"), false);
     assert.equal(await js("Boolean(document.querySelector('.sidebar-bottom .spin'))"), false);
   };
-  await wait(150);
+  for(let attempt=0;attempt<100;attempt++){
+    if(await js("document.querySelector('.sidebar-version span')?.textContent==='0.3.20'"))break;
+    await wait(30);
+  }
   assert.equal(scanner.state.background, true, 'startup is silent with periodic refresh disabled');
   await silent();assert.equal(await js("document.querySelector('.sidebar-bottom').textContent.includes('观看同步')"), false);
   await capture('refresh-background.png');

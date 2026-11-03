@@ -5,11 +5,11 @@ import {overlayRegions, playerOverlayBounds, pointInside} from '../electron/core
 import {PlayerService} from '../electron/services/player.mjs';
 import {memoryStore} from './helpers.mjs';
 
-function gestures() {
+function gestures(options={}) {
   let session = {position: 60, speed: 1.5, paused: false}, id = 0;
   const pending = new Map(), controls = [], seeks = []; let pauses = 0;
-  const input = new PlayerGestures({session: () => session, control: input => controls.push(input), seek: value => seeks.push(value), pause: () => pauses++, notify() {}, delay: fn => {pending.set(++id, fn); return id;}, clear: id => pending.delete(id)});
-  return {input, controls, seeks, get session() {return session;}, set session(next) {session = next;}, get pauses() {return pauses;}, tick() {for (const [id, fn] of pending) {pending.delete(id); fn();}}};
+  const input = new PlayerGestures({session: () => session, control: input => controls.push(input), seek: value => seeks.push(value), pause: () => pauses++, notify() {}, delay: fn => {pending.set(++id, fn); return id;}, clear: id => pending.delete(id),...options});
+  return {input, controls, seeks, get session() {return session;}, set session(next) {session = next;}, get pauses() {return pauses;}, get pending(){return pending.size;}, tick() {for (const [id, fn] of [...pending]) {if(pending.delete(id))fn();}}};
 }
 test('a short Right seeks once, repeat events do not create additional holds', () => {
   const g = gestures(); g.input.rightDown(); g.input.rightDown(); g.input.rightUp(); g.tick();
@@ -23,6 +23,26 @@ test('holding Right boosts and restores the exact original speed without seeking
 test('focus loss restores held speed and cancels a pending tap', () => {
   const g = gestures(); g.input.rightDown(); g.input.cancel(); g.tick(); assert.deepEqual(g.seeks, []);
   g.input.rightDown(); g.tick(); g.input.cancel(); assert.deepEqual(g.controls, [{speed: 3}, {speed: 1.5}]);
+});
+
+test('a missing release or delayed native keydown seeks once without ever latching speed', () => {
+  const g=gestures({rightPressed:()=>false});g.input.rightDown();g.tick();g.tick();g.input.rightUp();
+  assert.deepEqual(g.seeks,[65]);assert.deepEqual(g.controls,[]);assert.equal(g.input.right,null);assert.equal(g.pending,0);
+});
+
+test('physical release restores a held speed even if no keyup arrives and cancels its polling', () => {
+  let pressed=true;const g=gestures({rightPressed:()=>pressed});g.input.rightDown();g.tick();
+  assert.deepEqual(g.controls,[{speed:3}]);assert.equal(g.session.boosting,true);
+  pressed=false;g.tick();g.tick();g.input.rightUp();
+  assert.deepEqual(g.controls,[{speed:3},{speed:1.5}]);assert.deepEqual(g.seeks,[]);assert.equal(g.session.boosting,false);assert.equal(g.pending,0);
+  pressed=true;g.input.rightDown();g.input.cancel();g.tick();assert.equal(g.pending,0);assert.deepEqual(g.seeks,[]);
+});
+
+test('a delayed release from another input source cannot cancel a new held press',()=>{
+  let pressed=true;const g=gestures({rightPressed:()=>pressed});
+  g.input.rightDown('owner');g.input.rightUp(false,'native');g.tick();
+  assert.equal(g.session.boosting,true);assert.deepEqual(g.seeks,[]);
+  pressed=false;g.tick();assert.equal(g.session.boosting,false);assert.deepEqual(g.controls,[{speed:3},{speed:1.5}]);assert.equal(g.pending,0);
 });
 test('held input never changes a replacement episode and never slows an existing 4x speed', () => {
   const g = gestures(); g.session.speed = 4; g.input.rightDown(); g.tick(); g.input.rightUp(); assert.deepEqual(g.controls, [{speed: 4}, {speed: 4}]);

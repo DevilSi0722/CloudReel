@@ -92,10 +92,10 @@ export class SyncService {
     const pending = entries.some(item => item.watchState?.jobId === jobId && item.watchState.pending);
     return {pending, connected, count: entries.length};
   }
-  checkpoint(item, action) {
+  checkpoint(item, action, {defer=false}={}) {
     if (!this.eligible(item) || !(item.progress?.percent > 0) || (action === 'stop' && item.progress.percent < 1)) return Promise.resolve();
     this.store.queue({ itemId: item.id, metadata: structuredClone(item.metadata), progress: item.progress.percent, action, at: item.progress.updatedAt });
-    this.notify(); return this.flush();
+    this.notify(); return defer ? Promise.resolve() : this.flush();
   }
   async start(item) {
     if (!this.eligible(item) || !(item.progress?.percent > 0)) return;

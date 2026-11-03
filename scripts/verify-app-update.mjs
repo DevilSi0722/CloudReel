@@ -20,6 +20,7 @@ try{
   await fs.mkdir(appDir,{recursive:true});
   await fs.copyFile(path.join(root,'tests/fixtures/app-update-installed.mjs'),path.join(appDir,'main.mjs'));
   await fs.copyFile(path.join(root,'electron/services/app-updater.mjs'),path.join(appDir,'app-updater.mjs'));
+  await fs.copyFile(path.join(root,'electron/services/app-shutdown.mjs'),path.join(appDir,'app-shutdown.mjs'));
   server=http.createServer((request,response)=>{
     if(request.url==='/verified-corruption'){corrupt=false;rejected=true;response.end('ok');return;}
     if(request.url?.startsWith('/latest.yml')&&target){response.setHeader('Content-Type','text/yaml');response.end(`version: 0.3.22\nfiles:\n  - url: CloudReel-Setup-0.3.22-win-x64.exe\n    sha512: ${sha512}\n    size: ${target.length}\npath: CloudReel-Setup-0.3.22-win-x64.exe\nsha512: ${sha512}\nreleaseDate: 2026-11-03T00:00:00.000Z\n`);return;}
@@ -34,7 +35,7 @@ try{
     await fs.writeFile(path.join(appDir,'package.json'),JSON.stringify({name:'cloudreel-update-acceptance',productName,version,main:'main.mjs',type:'module',author:'CloudReel',description:'Isolated updater acceptance',dependencies:{'electron-updater':updaterVersion}}));
     if(version==='0.3.21')await run(process.execPath,[path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),'install','--prefix',appDir,'--omit=dev','--ignore-scripts','--no-audit','--no-fund']);
     const output=path.join(directory,'build-'+version);outputs[version]=output;
-    await build({projectDir:appDir,targets:Platform.WINDOWS.createTarget('nsis',Arch.x64),publish:'never',config:{appId:'dev.cloudreel.updateacceptance.'+tag,productName,electronVersion:engineVersion,electronDist:path.join(root,'node_modules/electron/dist'),npmRebuild:false,compression:'store',directories:{app:appDir,output},files:['main.mjs','app-updater.mjs','test-context.json','package.json'],win:{signExecutable:false},nsis:{oneClick:false,perMachine:false,allowElevation:false,createDesktopShortcut:false,createStartMenuShortcut:false,deleteAppDataOnUninstall:false,artifactName:'CloudReel-Setup-${version}-win-x64.exe'},publish:{provider:'generic',url:'http://127.0.0.1/isolated/'}}});
+    await build({projectDir:appDir,targets:Platform.WINDOWS.createTarget('nsis',Arch.x64),publish:'never',config:{appId:'dev.cloudreel.updateacceptance.'+tag,productName,electronVersion:engineVersion,electronDist:path.join(root,'node_modules/electron/dist'),npmRebuild:false,compression:'store',directories:{app:appDir,output},files:['main.mjs','app-updater.mjs','app-shutdown.mjs','test-context.json','package.json'],win:{signExecutable:false},nsis:{oneClick:false,perMachine:false,allowElevation:false,createDesktopShortcut:false,createStartMenuShortcut:false,deleteAppDataOnUninstall:false,artifactName:'CloudReel-Setup-${version}-win-x64.exe'},publish:{provider:'generic',url:'http://127.0.0.1/isolated/'}}});
     progress('built '+version);
   }
   target=await fs.readFile(path.join(outputs['0.3.22'],'CloudReel-Setup-0.3.22-win-x64.exe'));sha512=createHash('sha512').update(target).digest('base64');

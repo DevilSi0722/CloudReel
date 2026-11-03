@@ -299,9 +299,6 @@ input:focus, select:focus {border-color:#ffffff45;}
 .season-actions {display:flex;align-items:center;gap:12px;}
 .season-watched-count {font-size:11px;font-weight:400;color:#7c7d89;margin-left:9px;}
 .watch-sync-note {font-size:11px;color:#c7b58a;}
-.hidden-titles>div {display:flex;align-items:center;justify-content:space-between;gap:18px;padding:13px 0;border-bottom:1px solid #ffffff09;}
-.hidden-titles strong {font-size:13px;font-weight:500;}
-.section-heading .manage-hidden {margin-left:auto;font-size:11px;color:#898995;}
 .collection-poster {display:block;width:100%;aspect-ratio:2/3;position:relative;border-radius:11px;overflow:hidden;padding:0;background:#242428;box-shadow:0 6px 20px #0003;transition:transform .22s,box-shadow .22s;}
 .collection-poster:hover {box-shadow:0 13px 28px #0006;}
 .collection-poster img {width:100%;height:100%;object-fit:cover;display:block;}

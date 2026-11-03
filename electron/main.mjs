@@ -24,6 +24,8 @@ import {LibraryRefresh} from './services/library-refresh.mjs';
 import {FileManagementService} from './services/file-management.mjs';
 import {createAppUpdater} from './services/app-update-runtime.mjs';
 import {UPDATE_RELEASES} from './services/app-updater.mjs';
+import {AppShutdown} from './services/app-shutdown.mjs';
+import {bindPlayerKeyboard} from './services/player-keyboard.mjs';
 import {BaiduQuotaMonitor} from './services/baidu-quota.mjs';
 import {DiscoveryService} from './services/discovery.mjs';
 import {DiscoveryBrowser} from './services/discovery-browser.mjs';
@@ -66,6 +68,7 @@ else {
   };
   let notifyTimer;
   const notify = () => {
+    if(quitting)return;
     if (notifyTimer) return;
     notifyTimer = setTimeout(() => { notifyTimer = null; void quotaMonitor?.refresh(); if (window && !window.isDestroyed()) {const state = snapshot(); window.webContents.send('cloudreel:state', state); controls?.update(state);} }, 100);
   };
@@ -354,24 +357,19 @@ else {
   controls.bind();
   // Chromium and the native video child have separate focus. Keep shortcuts
   // working immediately after Play, before the user first clicks the video.
-  window.webContents.on('before-input-event', (event, input) => {
-    if (!player.session || input.control || input.alt || input.meta || input.isComposing) return;
-    const name = input.key.toLowerCase();
-    const actions = {' ': 'pause', k: 'pause', p: 'pause', arrowleft: 'backward', arrowup: 'volume-up', arrowdown: 'volume-down', f: 'fullscreen', enter: 'fullscreen', m: 'mute', q: 'exit', '[': 'previous', ']': 'next', '?': 'help', escape: 'escape'};
-    if (name === 'arrowright') {event.preventDefault(); if (input.type === 'keyUp') void player.shortcut('right-up'); else if (!input.isAutoRepeat) void player.shortcut('right-down'); return;}
-    const action = actions[name]; if (!action) return;
-    event.preventDefault();
-    if (input.type === 'keyDown' && (!input.isAutoRepeat || ['arrowleft', 'arrowup', 'arrowdown'].includes(name))) void player.shortcut(action).catch(() => {});
-  });
-  window.on('blur', () => {void player.shortcut('cancel');});
+  bindPlayerKeyboard(window,player);
   if (process.env.CLOUDREEL_DEV_URL && !app.isPackaged) await window.loadURL(process.env.CLOUDREEL_DEV_URL);
   else await window.loadFile(path.join(projectDirectory, 'dist', 'index.html'));
   app.on('second-instance', () => { if (window.isMinimized()) window.restore(); window.focus(); });
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', event => {
-    if (quitting) return; event.preventDefault(); updates.stop();quotaMonitor.stop();discovery.close();transfers.close();libraryRefresh.stop();cancelAuth(); webLogin.close(); traktLogin.close(); scanner.cancel(); mediaProbe.cancel(); metadata.cancel();
-    void player.stop().catch(() => {}).then(() => thumbnails.reset()).finally(() => { controls.destroy(); videoHost.destroy(); quitting = true; app.quit(); });
+  let closingPlayer;
+  const shutdown=new AppShutdown({app,
+    prepare:[()=>{quitting=true;clearTimeout(notifyTimer);closingPlayer=player.session;},()=>updates.stop(),()=>quotaMonitor.stop(),()=>discovery.close(),()=>transfers.close(),()=>libraryRefresh.stop(),()=>cancelAuth(),()=>webLogin.close(),()=>traktLogin.close(),()=>scanner.cancel(),()=>mediaProbe.cancel(),()=>metadata.cancel()],
+    cleanup:[()=>player.shutdown(),()=>thumbnails.reset(),()=>webLogin.browserSession.cookies.flushStore()],
+    persist:()=>store.persist(),
+    dispose:()=>{closingPlayer?.relay?.close();closingPlayer?.previousRelay?.close();closingPlayer?.socket?.destroy();if(closingPlayer?.child?.exitCode===null&&closingPlayer.child.signalCode==null)closingPlayer.child.kill();controls.destroy();videoHost.destroy();}
   });
+  shutdown.bind(window);
   const retryTimer = setInterval(() => {if(!quitting&&!updates.installing)void sync.flush();}, 60000); retryTimer.unref();
   const pullTimer = setInterval(() => { if (!quitting&&!updates.installing) void sync.pull(); }, 30000); pullTimer.unref();
   window.on('focus', () => { if (!quitting&&!updates.installing) void quotaMonitor.refresh(); if (!quitting&&!updates.installing && Date.now() - (Date.parse(sync.status().lastPulledAt ?? '') || 0) > 15000) void sync.pull(); });

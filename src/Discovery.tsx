@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {ArrowLeft, Check, ChevronRight, Cloud, Compass, Download, ExternalLink, FileVideo, Folder, FolderOpen, Info, LoaderCircle, RefreshCw, Search} from 'lucide-react';
 import {bridge} from './bridge';
 import {Empty, Modal, type Run} from './ui';
@@ -55,7 +55,7 @@ function SaveResource({resource,state,run,connect,onClose}:{resource:{id:string;
   const multipleNamingDirectories=new Set(naming?.files.map(file=>file.directory)).size>1;
   if (picking) return <BaiduFolderPicker state={state} run={run} onClose={() => setPicking(false)} onSelect={location => {setTarget(location);setPicking(false);}}/>;
   return <Modal title={task ? working(task.status) ? '已提交保存' : '保存结果' : '保存到百度网盘'} wide className="discovery-save" onClose={onClose}>
-    {task ? <div className="discovery-submitted"><span>{working(task.status) ? <LoaderCircle className="spin" size={28}/> : ['complete','saved'].includes(task.status) ? <Check size={28}/> : <Info size={28}/>}</span><h3>{task.message}</h3><p>保存记录会保留在发现页，你可以继续浏览。</p><button className="button primary" onClick={onClose}>继续浏览</button></div> : <>
+    {task ? <div className="discovery-submitted"><span>{working(task.status) ? <LoaderCircle className="spin" size={28}/> : ['complete','saved'].includes(task.status) ? <Check size={28}/> : <Info size={28}/>}</span><h3>{task.message}</h3>{task.canCheck && !working(task.status) && task.status !== 'complete' && <button className="text-button" onClick={() => void run('discovery:check',task.id)}>检查状态</button>}<button className="button primary" onClick={onClose}>继续浏览</button></div> : <>
       <p className="modal-description discovery-resource-title">{resource.title}</p>
       <div className="share-toolbar"><nav aria-label="分享文件路径"><button disabled={loading} onClick={() => void files('/',false,[])}>分享内容</button>{trail.map((part,index) => <span key={part.path}><ChevronRight size={13}/><button disabled={loading} onClick={() => void files(part.path,false,trail.slice(0,index+1))}>{part.name}</button></span>)}</nav>{preview && <button className="text-button" disabled={loading} onClick={() => {const ids = preview.files.map(file => String(file.fs_id));setSelected(old => ids.every(value => old.includes(value)) ? old.filter(value => !ids.includes(value)) : [...new Set([...old,...ids])]);}}>全选本页</button>}</div>
       <div className="share-files" aria-label="分享文件" aria-busy={loading}>
@@ -87,8 +87,15 @@ export default function Discovery({state,query,run,connect}:{state:AppState;quer
   const [detail,setDetail] = useState<DiscoveryDetail|null>(null), [movie,setMovie] = useState<DiscoveryMovie|null>(null), [detailLoading,setDetailLoading] = useState(false), [detailError,setDetailError] = useState(''), [limit,setLimit] = useState(12), [resource,setResource] = useState<{id:string;title:string}|null>(null);
   const [provider,setProvider] = useState<'all'|DiscoveryProvider>('baidu');
   const generation = useRef(0), detailGeneration = useRef(0), pending = useRef(false), forceFresh = useRef(false), pageEnd = useRef<HTMLDivElement>(null);
+  const catalogPosition = useRef({x:0,y:0}), catalogCard = useRef<string|null>(null), catalogGrid = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const position = movie ? {x:0,y:0} : catalogPosition.current;
+    window.scrollTo({left:position.x,top:position.y,behavior:'instant'});
+    if (!movie) Array.from(catalogGrid.current?.querySelectorAll<HTMLButtonElement>('.discovery-card')??[]).find(card=>card.dataset.movieId===catalogCard.current)?.focus({preventScroll:true});
+  },[!!movie]);
   const refresh = () => {forceFresh.current = true;setRevision(value => value+1);};
   useEffect(() => {
+    catalogPosition.current={x:0,y:0};catalogCard.current=null;window.scrollTo({top:0,left:0,behavior:'instant'});
     const current = ++generation.current;setMovies([]);setPage(1);setMore(false);setLoading(true);setError('');setMovie(null);setDetail(null);detailGeneration.current++;
     const fresh = forceFresh.current;forceFresh.current = false;
     const timer = setTimeout(() => {pending.current = true;void bridge.invoke<{movies:DiscoveryMovie[];next:string|null}>('discovery:catalog',{category,order,query,page:1,fresh}).then(result => {if(current === generation.current) {setMovies(result.movies);setMore(!!result.next);}}).catch(reason => {if(current === generation.current) setError(reason.message);}).finally(() => {if(current === generation.current) {setLoading(false);pending.current = false;}});},query ? 350 : 0);
@@ -107,16 +114,15 @@ export default function Discovery({state,query,run,connect}:{state:AppState;quer
     observer.observe(target);return () => observer.disconnect();
   },[more,loading,error,movie,loadMore]);
   const open = async (value:DiscoveryMovie) => {
+    if (!movie) {catalogPosition.current={x:window.scrollX,y:window.scrollY};catalogCard.current=value.id;}
     const current = ++detailGeneration.current;setMovie(value);setDetail(null);setDetailLoading(true);setDetailError('');setLimit(12);
     try {const result = await bridge.invoke<DiscoveryDetail>('discovery:detail',value.id);if(current === detailGeneration.current) {setDetail(result);setProvider(result.resources.some(resource=>resource.provider==='baidu')?'baidu':'all');}}
     catch(reason) {if(current === detailGeneration.current) setDetailError((reason as Error).message);}
     finally {if(current === detailGeneration.current) setDetailLoading(false);}
   };
-  const tasks = state.discoveryTransfers || [];
   const resources = detail?.resources.filter(value => provider === 'all' || value.provider === provider) || [];
   return <div className="discovery-page">
     <div className="page-heading"><div><h1>发现片源</h1><p className="heading-caption">发现想看的故事，保存到你的云端影院。</p></div><span className="discovery-credit"><Compass size={16}/>来自 SeedHub</span></div>
-    {!!tasks.length && <details className="discovery-tasks" open={tasks.some(task => working(task.status)) || undefined}><summary><Download size={16}/><span>保存记录</span><small>{tasks.filter(task => working(task.status)).length ? '正在处理' : `${tasks.length} 项`}</small></summary><div>{tasks.slice(0,5).map(task => <article key={task.id} className={`discovery-task task-${task.status}`}>{working(task.status) ? <LoaderCircle className="spin" size={18}/> : task.status === 'complete' ? <Check size={18}/> : <Info size={18}/>}<div><strong>{task.title}</strong><p>{task.message}</p><small>{task.target}</small></div>{task.canCheck && !working(task.status) && task.status !== 'complete' && <button className="text-button" onClick={() => void run('discovery:check',task.id)}>检查状态</button>}</article>)}</div></details>}
     {movie ? <>
       <button className="text-button discovery-back" onClick={() => {detailGeneration.current++;setMovie(null);setDetail(null);}}><ArrowLeft size={16}/>返回发现</button>
       <section className="discovery-detail"><div className="discovery-detail-poster">{(detail?.poster || movie.poster) ? <img src={detail?.poster || movie.poster || ''} alt="" referrerPolicy="no-referrer"/> : <Compass size={40}/>}</div><div><span className="eyebrow">片源详情</span><h2>{detail?.title || movie.title}</h2><p>{detail?.overview || '选择下方资源，查看文件后保存到自己的百度网盘。'}</p><small>影片资料与版本标注来自资源网站，实际格式以入库后的媒体检测为准。</small></div></section>
@@ -129,7 +135,7 @@ export default function Discovery({state,query,run,connect}:{state:AppState;quer
     </> : <>
       <div className="discovery-toolbar"><div className="discovery-tabs" aria-label="片源分类">{[['all','全部'],['movies','电影'],['shows','剧集'],['anime','动漫']].map(([value,title]) => <button key={value} aria-pressed={category === value} onClick={() => setCategory(value)}>{title}</button>)}</div><div className="discovery-sort" aria-label="片源排序">{[['hot','近期热门'],['update','最近更新'],['date','最新上映'],['score','评分优先']].map(([value,title]) => <button key={value} aria-pressed={order === value} onClick={() => setOrder(value)}>{title}</button>)}</div><button className="icon-button" aria-label="刷新发现页" disabled={loading} onClick={refresh}><RefreshCw size={17}/></button></div>
       {query && <p className="discovery-query">“{query}”的搜索结果</p>}
-      <div className="discovery-grid">{movies.map(value => <button className="discovery-card" key={value.id} onClick={() => void open(value)}><span className="discovery-cover">{value.poster ? <img loading="lazy" src={value.poster} referrerPolicy="no-referrer" alt="" onError={event => {event.currentTarget.style.visibility='hidden';}}/> : <Compass size={35}/>}<span className="discovery-cover-action"><Search size={18}/>查看资源</span></span><strong>{value.title}</strong></button>)}{loading && !movies.length && Array.from({length:10},(_,index) => <div className="discovery-skeleton" key={index}><span/><i/></div>)}</div>
+      <div ref={catalogGrid} className="discovery-grid">{movies.map(value => <button className="discovery-card" key={value.id} data-movie-id={value.id} onClick={() => void open(value)}><span className="discovery-cover">{value.poster ? <img loading="lazy" src={value.poster} referrerPolicy="no-referrer" alt="" onError={event => {event.currentTarget.style.visibility='hidden';}}/> : <Compass size={35}/>}<span className="discovery-cover-action"><Search size={18}/>查看资源</span></span><strong>{value.title}</strong></button>)}{loading && !movies.length && Array.from({length:10},(_,index) => <div className="discovery-skeleton" key={index}><span/><i/></div>)}</div>
       {loading && <div className="loading-row" role="status"><LoaderCircle className="spin" size={20}/>正在发现影片</div>}
       {error && (movies.length ? <div className="inline-error discovery-page-error" role="alert"><Info size={17}/><span>{error}</span><button className="text-button" onClick={()=>void loadMore()}>重试加载</button></div> : <div className="discovery-error" role="alert"><Info size={24}/><h3>暂时无法读取片源</h3><p>{error}</p><div><button className="button secondary" onClick={refresh}>重试</button><button className="text-button" onClick={() => void run('discovery:verifySite')}>在网站完成验证<ExternalLink size={14}/></button></div></div>)}
       {!loading && !error && !movies.length && <Empty icon={<Search size={30}/>} title="没有找到影片" text="试试更短的片名、原名或英文名称。"/>}

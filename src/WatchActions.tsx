@@ -1,6 +1,6 @@
 import {useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {Check, Circle, EyeOff, Heart, MoreHorizontal, RefreshCw, RotateCcw} from 'lucide-react';
+import {Check, Circle, EyeOff, Heart, MoreHorizontal, RefreshCw} from 'lucide-react';
 import type {MediaItem} from './types';
 import type {Run} from './ui';
 import {continueHidden, watchSummary} from './library';
@@ -47,9 +47,9 @@ export function useWatchMenu(run: Run, report?: (result: WatchResult) => void) {
     {label: '标记为未观看', icon: <Circle size={16} />, action: () => {void mark(entries, false);}}
   ];
   if (menu?.organize) actions.push(
-    {label: summary.favorite ? '取消收藏' : '加入收藏', icon: <Heart size={16} />, separator: true, action: () => {void run('library:organize', {ids, favorite: !summary.favorite});}},
-    {label: continueHidden(entries) ? '恢复到继续观看' : '从继续观看中隐藏', icon: continueHidden(entries) ? <RotateCcw size={16} /> : <EyeOff size={16} />, action: () => {void run('library:organize', {ids, hidden: !continueHidden(entries)});}}
+    {label: summary.favorite ? '取消收藏' : '加入收藏', icon: <Heart size={16} />, separator: true, action: () => {void run('library:organize', {ids, favorite: !summary.favorite});}}
   );
+  if (menu?.organize && !continueHidden(entries)) actions.push({label: '从继续观看中移除', icon: <EyeOff size={16} />, action: () => {void run('library:organize', {ids, hidden: true});}});
   return {open, mark, menu: menu && <ActionMenu point={menu.point} title={menu.title} actions={actions} onClose={() => setMenu(null)} />};
 }
 

@@ -19,7 +19,13 @@ for(let n=0;n<5;n++) {
 }
 let window;
 app.whenReady().then(async()=>{
-  ipcMain.handle('cloudreel:invoke',()=>({ok:true,value:state}));
+  ipcMain.handle('cloudreel:invoke',(_event,method,payload)=>{
+    if(method==='library:organize'){
+      for(const item of state.items.filter(item=>payload.ids.includes(item.id)))if(payload.hidden)item.continueHiddenAt=new Date().toISOString();
+      window.webContents.send('cloudreel:state',state);
+    }
+    return {ok:true,value:state};
+  });
   window=new BrowserWindow({show:false,width:1440,height:1100,webPreferences:{preload:path.join(root,'electron/preload.cjs'),contextIsolation:true,nodeIntegration:false,backgroundThrottling:false,offscreen:true}});
   for(const method of ['show','showInactive','focus']) window[method]=()=>{throw new Error('visibility prohibited');};
   await window.loadFile(path.join(root,'dist/index.html'));
@@ -147,7 +153,24 @@ app.whenReady().then(async()=>{
   await media('reduce');await wait(40);
   assert.equal(await js("document.querySelector('.dimensional-poster').hasAttribute('data-tilting')"),false);
   assert.equal(await js("getComputedStyle(document.querySelector('.poster-surface')).transform"),'none');
+  // Removing a resume card leaves no hidden-items counter, list or restore
+  // command, including after navigating away and receiving a state update.
+  state.items[0].progress={position:120,duration:1200,percent:10,updatedAt:'2026-10-27T01:00:00Z'};
+  web.send('cloudreel:state',state);await wait(100);
+  assert.equal(await js("document.querySelectorAll('.continue-card').length"),1);
+  await js("document.querySelector('.continue-card .library-more').click()");await wait(30);
+  await js("[...document.querySelectorAll('[role=menuitem]')].find(b=>b.textContent.includes('从继续观看中移除')).click()");await wait(200);
+  assert.equal(await js("document.querySelectorAll('.continue-card').length"),0);
+  assert.equal(await js("[...document.querySelectorAll('.section-heading h2')].some(n=>n.textContent==='继续观看')"),false,'no empty resume shelf remains');
+  await navigate('电影');await navigate('现在观看');await wait(80);
+  assert.equal(await js("!!document.querySelector('.manage-hidden,.hidden-titles') || document.querySelector('.content').textContent.includes('已隐藏')"),false);
+  await js("document.querySelector('.collection-card .library-more').click()");await wait(30);
+  assert.equal(await js("document.querySelector('.library-menu').textContent.includes('恢复到继续观看')"),false);
+  await js("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))");await wait(160);
+  assert.equal(state.items[0].progress.position,120,'resume removal preserves the watched position');
+  assert.equal(await js("document.querySelectorAll('.collection-card').length"),5,'original library entries remain available');
+  if(output){web.invalidate();await wait(100);fs.writeFileSync(path.join(output,'continue-removed.png'),(await web.capturePage()).toPNG());}
   assert.equal(BrowserWindow.getAllWindows().some(view=>view.isVisible()),false);
-  console.log(JSON.stringify({stablePosterCaptions:true,directionalTiltAndLight:true,completeAdaptiveOverviewLines:true,anchoredMenus:true,stationaryPageText:true,lateTitleArtStable:true,reducedMotion:true,visibleWindowsOpened:0}));
+  console.log(JSON.stringify({stablePosterCaptions:true,directionalTiltAndLight:true,completeAdaptiveOverviewLines:true,anchoredMenus:true,stationaryPageText:true,lateTitleArtStable:true,reducedMotion:true,resumeRemovalWithoutHiddenHistory:true,visibleWindowsOpened:0}));
   window.destroy();app.quit();
 }).catch(error=>{console.error(error.stack);window?.destroy();app.exit(1);});

@@ -2,6 +2,15 @@ import koffi from 'koffi';
 import {fileURLToPath} from 'node:url';
 
 let api;
+let keyState;
+
+// Read only while a player gesture is pending. Electron and mpv can receive
+// different halves of a key press when native keyboard focus changes.
+export function rightKeyPressed() {
+  if (process.platform !== 'win32') return null;
+  keyState ??= koffi.load('user32.dll').func('int16_t __stdcall GetAsyncKeyState(int)');
+  return (keyState(0x27) & 0x8000) !== 0;
+}
 function win32() {
   if (api) return api;
   // Native loaders cannot read ASAR's virtual filesystem. The build explicitly

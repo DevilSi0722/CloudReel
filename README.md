@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.22-899cc4?style=flat-square" alt="Version 0.3.22" />
+  <img src="https://img.shields.io/badge/version-0.3.23-899cc4?style=flat-square" alt="Version 0.3.23" />
   <img src="https://img.shields.io/badge/platform-Windows_x64-64748b?style=flat-square" alt="Windows x64" />
   <img src="https://img.shields.io/badge/Node.js-24_LTS-64748b?style=flat-square" alt="Node.js 24 LTS" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT License" /></a>
@@ -105,6 +105,7 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 | `npm run check` | 执行测试与完整构建 |
 | `npm run verify:playback` | 隔离正式会话，在隐藏窗口验证真实百度网盘电影与剧集播放 |
 | `npm run verify:playback -- --mounts` | 用真实网盘片源验证文件夹挂载与改名后的播放恢复 |
+| `npm run verify:playback -- --shortcuts --packaged` | 用真实网盘验证发行包的短按快进、长按倍速、松开兜底与播放中退出 |
 | `npm run verify:seedhub -- --share-api` | 在隐藏窗口只读验证 SeedHub 列表、资源来源与百度分享 |
 | `npm run dist` | 打包支持软件内更新的 Windows x64 安装版 |
 | `npm run dist:portable` | 可选打包免安装便携版 |
@@ -114,8 +115,8 @@ TMDB 可在 [API 设置](https://www.themoviedb.org/settings/api) 中申请；�
 完成快速开始中的运行库和服务配置后，执行 `npm run dist`，产物位于：
 
 ```text
-release/CloudReel-Setup-0.3.22-win-x64.exe
-release/CloudReel-Setup-0.3.22-win-x64.exe.blockmap
+release/CloudReel-Setup-0.3.23-win-x64.exe
+release/CloudReel-Setup-0.3.23-win-x64.exe.blockmap
 release/latest.yml
 ```
 

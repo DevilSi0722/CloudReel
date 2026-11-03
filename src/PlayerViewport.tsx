@@ -4,7 +4,14 @@ import type {AppState} from './types';
 
 export default function PlayerViewport({state}: {state: AppState}) {
   const video = useRef<HTMLDivElement>(null);
-  useEffect(() => {const old = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => {document.body.style.overflow = old;};}, []);
+  useEffect(() => {
+    const old = document.body.style.overflow;document.body.style.overflow = 'hidden';
+    // Consume navigation only after Chromium dispatches it. Cancelling the
+    // native keyDown before dispatch can prevent Electron receiving keyUp.
+    const key=(event:KeyboardEvent)=>{if(event.key==='ArrowRight'){event.preventDefault();event.stopPropagation();}};
+    window.addEventListener('keydown',key,true);
+    return () => {document.body.style.overflow=old;window.removeEventListener('keydown',key,true);};
+  }, []);
   useLayoutEffect(() => {
     const element = video.current; if (!element) return;
     let frame = 0;

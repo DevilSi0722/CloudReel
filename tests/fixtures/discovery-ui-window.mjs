@@ -50,6 +50,21 @@ app.whenReady().then(async()=>{
   assert.equal(await js("document.querySelectorAll('.discovery-card').length"),39,'a pagination failure preserves loaded cards');
   await click('重试加载');await until(()=>js("document.querySelectorAll('.discovery-card').length===59"));
   await js("window.scrollTo(0,document.documentElement.scrollHeight)");await wait(200);assert.equal(calls.some(call=>call.method==='discovery:catalog'&&call.payload.page>3),false);
+  // Navigate from a later loaded page, scroll the detail independently, then
+  // return before paint without a catalogue refetch or extra pagination.
+  await js("document.querySelectorAll('.discovery-card')[38].scrollIntoView({block:'center',behavior:'instant'})");await wait(80);
+  const catalogScroll=await js('window.scrollY'),catalogCalls=calls.filter(call=>call.method==='discovery:catalog').length;
+  assert.ok(catalogScroll>600);
+  await js("document.querySelectorAll('.discovery-card')[38].click()");await until(()=>js("document.querySelectorAll('.discovery-resource').length===12"));
+  assert.equal(await js('window.scrollY'),0,'details start at their own top');
+  await js("window.scrollTo(0,document.documentElement.scrollHeight)");await click('返回发现');
+  await until(()=>js("document.querySelectorAll('.discovery-card').length===59"));
+  assert.equal(await js('window.scrollY'),catalogScroll,'return restores the exact catalogue offset');
+  await capture('discovery-return-position.png');
+  assert.equal(await js("document.activeElement===document.querySelectorAll('.discovery-card')[38]"),true,'keyboard focus returns without scrolling');
+  assert.equal(calls.filter(call=>call.method==='discovery:catalog').length,catalogCalls);
+  await js("document.activeElement.click()");await until(()=>js("Boolean(document.querySelector('.discovery-detail'))"));await click('返回发现');await wait(100);
+  assert.equal(await js('window.scrollY'),catalogScroll,'repeated visits preserve the same position');
   await js("window.scrollTo(0,0)");
   await js("document.querySelector('[aria-label=\"刷新发现页\"]').click()");await until(()=>calls.some(call=>call.method==='discovery:catalog'&&call.payload.fresh===true));await until(()=>js("!document.querySelector('[aria-label=\"刷新发现页\"]').disabled"));
   await js("document.querySelector('.discovery-tabs button:nth-child(3)').click()");await until(()=>calls.some(call=>call.method==='discovery:catalog'&&call.payload.category==='shows'));
@@ -91,7 +106,11 @@ app.whenReady().then(async()=>{
   const bounds=await js("(()=>{const r=document.querySelector('.share-save-footer .primary').getBoundingClientRect();return {inside:r.bottom<=innerHeight&&r.right<=innerWidth&&r.left>=0};})()");assert.equal(bounds.inside,true);
   await click('保存并加入片库');await until(()=>js("Boolean(document.querySelector('.discovery-submitted'))"));
   const writes=calls.filter(call=>call.method==='discovery:transfer');assert.equal(writes.length,1);assert.deepEqual(writes[0].payload,{handle:'preview',fsIds:['101'],target:{path:'/Movies',fsId:'300'},mount:true,autoRename:true,season:4});
-  await click('继续浏览');await until(()=>js("!document.querySelector('[role=dialog]')"));assert.equal(await js("document.querySelector('.discovery-task p').textContent"),'百度正在保存文件');
+  await click('继续浏览');await until(()=>js("!document.querySelector('[role=dialog]')"));
+  assert.equal(await js("Boolean(document.querySelector('.discovery-tasks')) || document.querySelector('.discovery-page').textContent.includes('保存记录')"),false);
+  state.discoveryTransfers[0]={...state.discoveryTransfers[0],status:'complete',message:'已加入片库'};window.webContents.send('cloudreel:state',state);await wait(80);
+  await click('返回发现');await wait(80);assert.equal(await js("document.querySelector('.discovery-page').textContent.includes('保存记录')"),false,'completed transfers do not leave history on the page');
+  await capture('discovery-without-history.png');
   assert.equal(BrowserWindow.getAllWindows().some(view=>view.isVisible()),false);
-  console.log(JSON.stringify({nativeDiscovery:true,recentPopular:true,infiniteScroll:true,paginationRetry:true,providerFilters:true,staleSearchIgnored:true,progressiveResources:true,singleEpisodeSelection:true,destinationWithoutMount:true,transferSubmittedOnce:true,responsiveSave:true,visibleWindows:0}));provider?.close();window.destroy();app.quit();
+  console.log(JSON.stringify({nativeDiscovery:true,recentPopular:true,infiniteScroll:true,paginationRetry:true,restoredCataloguePosition:true,noTransferHistory:true,providerFilters:true,staleSearchIgnored:true,progressiveResources:true,singleEpisodeSelection:true,destinationWithoutMount:true,transferSubmittedOnce:true,responsiveSave:true,visibleWindows:0}));provider?.close();window.destroy();app.quit();
 }).catch(error=>{console.error(error.stack);provider?.close();window?.destroy();app.exit(1);});

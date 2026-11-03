@@ -6,12 +6,14 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import updater from 'electron-updater';
 import {AppUpdateService} from './app-updater.mjs';
+import {AppShutdown} from './app-shutdown.mjs';
 const context=JSON.parse(fs.readFileSync(new URL('./test-context.json',import.meta.url),'utf8'));
 const directory=context.directory;
 if(!directory||!path.basename(directory).startsWith('cloudreel-update-install-'))process.exit(2);
 app.setName('CloudReel-Update-Acceptance');app.setPath('userData',path.join(directory,'profile'));
 let service;
 app.whenReady().then(async()=>{
+  const shutdown=new AppShutdown({app});app.on('before-quit',event=>shutdown.handle(event));
   const profile=app.getPath('userData'),stateFile=path.join(profile,'state.json');
   if(app.getVersion()==='0.3.21'){
     fs.mkdirSync(profile,{recursive:true});

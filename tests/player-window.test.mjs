@@ -8,6 +8,17 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {playerPopoverPosition} from '../src/player-layout.ts';
 
+test('owner key events deliver release after a tap and restore long-press speed even with Control held',{skip:process.platform!=='win32',timeout:15000},async()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url)),directory=await fs.mkdtemp(path.join(os.tmpdir(),'cloudreel-keyboard-'));
+  try{
+    const result=await new Promise((resolve,reject)=>{
+      const child=spawn(createRequire(import.meta.url)('electron'),[path.join(root,'tests/fixtures/player-keyboard-window.mjs')],{cwd:root,windowsHide:true,env:{...process.env,CLOUDREEL_TEST_DIRECTORY:directory}});
+      let output='';child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>output+=data);
+      const timer=setTimeout(()=>{child.kill();reject(Error('keyboard test timed out'));},10000);child.once('error',reject);child.once('exit',code=>{clearTimeout(timer);resolve({code,output});});
+    });assert.equal(result.code,0,result.output);assert.match(result.output,/"nativeKeyRelease":true/);
+  }finally{assert.equal(path.dirname(directory),os.tmpdir());assert.ok(path.basename(directory).startsWith('cloudreel-keyboard-'));await fs.rm(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
+
 test('wide-screen speed menu stays next to its button above the controls', () => {
   const anchor = {x:1710,y:1300,width:36,height:100};
   const panel = {width:250,height:440}, result = playerPopoverPosition(anchor,panel,{width:2560,height:1440});

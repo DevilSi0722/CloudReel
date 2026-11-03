@@ -6,6 +6,7 @@ import { createStreamRelay } from './stream.mjs';
 import { chooseResume } from '../core/media.mjs';
 import { groupLibrary } from '../core/identification.mjs';
 import { PlayerGestures } from '../core/player-gestures.mjs';
+import {rightKeyPressed} from './native-input.mjs';
 import { videoOutputArguments, videoPlaybackStatus } from '../core/player-video.mjs';
 import {readMediaInfo} from '../core/media-info.mjs';
 import {SubtitleService, isSubtitle} from './subtitles.mjs';
@@ -23,9 +24,9 @@ export function discoverMpv(configured, resourceDirectory, projectDirectory) {
 }
 
 export class PlayerService {
-  constructor(store, baidu, trakt, sync, { resolveMpv, notify = () => {}, videoHost, inputConfig, fullscreen = () => false, toggleFullscreen = () => {}, onAction = () => false, spawnPlayer = spawn }) {
+  constructor(store, baidu, trakt, sync, { resolveMpv, notify = () => {}, videoHost, inputConfig, fullscreen = () => false, toggleFullscreen = () => {}, onAction = () => false, spawnPlayer = spawn, rightPressed = rightKeyPressed }) {
     Object.assign(this, { store, baidu, trakt, sync, resolveMpv, notify, videoHost, inputConfig, fullscreen, toggleFullscreen, onAction, spawnPlayer }); this.session = null; this.opening = false; this.subtitles = new SubtitleService(baidu);
-    this.gestures = new PlayerGestures({session: () => this.session, control: input => this.control(input, true), seek: value => this.seek(value), pause: () => this.togglePause(), notify});
+    this.gestures = new PlayerGestures({session: () => this.session, control: input => this.control(input, true), seek: value => this.seek(value), pause: () => this.togglePause(), notify, rightPressed});
   }
   status() { const session = this.session; return session ? { chapters: readChapters(session.chapters, session.duration), markers: playbackMarkers(session.item, this.store.data.playbackMarkers, session.duration), switching: session.switching ?? null, loadError: session.loadError ?? null, itemId: session.item.id, title: session.item.title, paused: session.paused, position: session.position, duration: session.duration, speed: session.speed, volume: session.volume, muted: session.muted, buffering: session.buffering, buffered: bufferedRanges(session.cacheState, session.duration), tracks: session.tracks, aid: session.aid || 'no', sid: session.sid || 'no', fullscreen: this.fullscreen(), embedded: Boolean(this.videoHost), ready: session.duration > 0, boosting: Boolean(session.boosting), hint: session.hint, subtitleStyle: {delay: session.preferences?.subtitleDelay ?? 0, size: session.preferences?.subtitleSize ?? 44, font: session.preferences?.subtitleFont ?? 'Microsoft YaHei'}, subtitlesLoading: Boolean(session.subtitlesLoading), upNext: this.upNext(session), seek: session.seek && {id: session.seek.id, target: session.seek.target, pending: session.seek.pending, error: session.seek.error}, video: videoPlaybackStatus(session) } : null; }
   async prepareMedia(item, {quiet = false, signal} = {}) {
@@ -217,7 +218,7 @@ export class PlayerService {
       if (event.event !== 'property-change') this.settleSeek(session);
     }
     if (event.event === 'client-message' && event.args?.[0] === 'cloudreel') {
-      void this.shortcut(event.args[1]).catch(() => {});
+      void this.shortcut(event.args[1],'native').catch(() => {});
       return;
     }
     // Replacement end-file and queued properties still belong to the old file
@@ -318,8 +319,10 @@ export class PlayerService {
       if (this.session === session) {void this.thumbnails?.reset(); this.clearWarm(); this.session = null; this.videoHost?.hide(); }
       // Snapshot this session before a new playback can alter the library object.
       const snapshot = structuredClone(session.item);
-      await session.sequence;
-      if (session.started) await this.sync.checkpoint(snapshot, 'stop');
+      if (!this.shuttingDown) {
+        await session.sequence;
+        if (session.started) await this.sync.checkpoint(snapshot, 'stop');
+      }
       this.notify();
       if (!this.session && !this.opening && this.fullscreen()) this.toggleFullscreen();
     })(); return session.finishing;
@@ -332,8 +335,20 @@ export class PlayerService {
     session.intentional = true;
     session.socket?.write(JSON.stringify({ command: ['quit'] }) + '\n');
     const timeout = setTimeout(() => session.child.kill(), 1500);
-    await new Promise(resolve => { if (session.child.exitCode !== null) resolve(); else session.child.once('exit', resolve); });
+    await new Promise(resolve => { if (session.child.exitCode !== null || session.child.signalCode != null) resolve(); else session.child.once('exit', resolve); });
     clearTimeout(timeout); await this.finish(session);
+  }
+  shutdown() {
+    if(this.shuttingDown)return this.shutdownTask;
+    this.shuttingDown=true;
+    const session=this.session;
+    if(session){
+      this.saveProgress(session);
+      // Queue the latest stop before awaiting an older in-flight start/pause.
+      // It remains on disk for the next launch instead of delaying app exit.
+      if(session.started)void this.sync.checkpoint(structuredClone(session.item),'stop',{defer:true}).catch(()=>{});
+    }
+    return this.shutdownTask=this.stop();
   }
   togglePause() { if (this.session?.socket) this.session.socket.write(JSON.stringify({ command: ['cycle', 'pause'] }) + '\n'); }
   command(command) { if (!this.session?.socket) throw new Error('播放器尚未就绪。'); this.session.socket.write(JSON.stringify({ command }) + '\n'); }
@@ -433,12 +448,12 @@ export class PlayerService {
     const next=this.nextItem(session.item);return next ? {itemId:next.id,remaining:Math.ceil(remaining),paused:session.paused || session.buffering} : null;
   }
   cancelNext() {this.clearWarm();if(this.session) {this.session.nextCancelled=true;this.notify();}}
-  async shortcut(action) {
+  async shortcut(action,source='renderer') {
     const s = this.session; if (!s?.socket || s.finishing) return;
     const hint = text => {s.hint = {text, until: Date.now() + 1300}; this.notify();};
     switch (action) {
-      case 'right-down': this.gestures.rightDown(); break;
-      case 'right-up': this.gestures.rightUp(); break;
+      case 'right-down': this.gestures.rightDown(source); break;
+      case 'right-up': this.gestures.rightUp(false,source); break;
       case 'cancel': this.gestures.cancel(); break;
       case 'click': this.gestures.singleClick(); break;
       case 'double-click': this.gestures.doubleClick(); this.toggleFullscreen(); break;
